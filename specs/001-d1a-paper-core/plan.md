@@ -23,7 +23,7 @@ Technical approach: one asyncio process, single OMS command owner, SQLAlchemy 2.
 - stdlib `asyncio`, `decimal`, `zoneinfo` as needed
 - **Forbidden in D1a**: FastAPI, Electron, scikit-learn, sqlite-vec, FAISS, CCXT (trading), full PySide6 UI/installer (D1c later), MetaTrader5
 
-**Storage**: SQLite WAL (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, bounded `busy_timeout`); runtime `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`; dev `data/` (gitignore)
+**Storage**: SQLite WAL (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, bounded `busy_timeout`); runtime `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`; dev `data/` (gitignore). **ADR-D03 fail-closed**: disk full, corruption, migration fail, or mandatory commit fail → `SAFE_LOCK` (no new exposure / no send).
 
 **Testing**: pytest — `tests/unit|contract|integration|fault` (+ evidence reports for matrix). Packaged E2E deferred to D1c.
 

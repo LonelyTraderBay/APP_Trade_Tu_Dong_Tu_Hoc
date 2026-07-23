@@ -215,12 +215,35 @@ class CcxtDemoAdapter:
                 "options": {"defaultType": "spot"},
             }
         )
+        # Spot DEMO endpoints (Owner keys may be legacy vision OR demo-api):
+        # 1) set_sandbox_mode → testnet.binance.vision
+        # 2) enable_demo_trading → demo-api.binance.com
+        activated = False
+        last_err: Exception | None = None
         if hasattr(ex, "set_sandbox_mode"):
-            ex.set_sandbox_mode(True)
-        # Re-validate configured URLs stay on testnet class
+            try:
+                ex.set_sandbox_mode(True)
+                activated = True
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+        if not activated and hasattr(ex, "enable_demo_trading"):
+            try:
+                ex.enable_demo_trading(True)
+                activated = True
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+        if not activated:
+            raise AllowlistViolation(
+                f"cannot enable Binance Spot DEMO endpoint: {last_err}"
+            )
+        # Re-validate configured URLs stay on DEMO/testnet class
         api_url = ""
         try:
-            api_url = str(ex.urls.get("api", ""))
+            urls = ex.urls.get("api", {})
+            if isinstance(urls, dict):
+                api_url = str(urls.get("public") or urls.get("private") or urls)
+            else:
+                api_url = str(urls)
         except Exception:
             api_url = "binance_spot_testnet"
         assert_demo_sandbox(api_url or "binance_spot_testnet")
@@ -326,13 +349,15 @@ class CcxtDemoAdapter:
                 for s, q in self.exchange._positions.items()
                 if q != 0
             ]
-        raw = self.exchange.fetch_positions([D1B_ALLOWLIST.symbol])
-        out: list[dict[str, Any]] = []
-        for p in raw or []:
-            qty = d(str(p.get("contracts") or p.get("positionAmt") or "0"))
-            if qty != 0:
-                out.append({"symbol": p.get("symbol") or D1B_ALLOWLIST.symbol, "qty": str(qty)})
-        return out
+        # Spot DEMO: do NOT call fetch_positions (futures) — sandbox futures deprecated.
+        # Exposure = base-asset balance for allowlisted spot symbol (BTC/USDT → BTC).
+        base = D1B_ALLOWLIST.symbol.split("/")[0]
+        bal = self.exchange.fetch_balance()
+        row = bal.get(base) or {}
+        qty = d(str(row.get("total") or row.get("free") or "0"))
+        if qty == 0:
+            return []
+        return [{"symbol": D1B_ALLOWLIST.symbol, "qty": str(qty)}]
 
     def get_balances(self) -> dict[str, Any]:
         bal = self.exchange.fetch_balance()

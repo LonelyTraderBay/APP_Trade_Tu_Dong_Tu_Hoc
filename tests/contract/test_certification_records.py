@@ -62,3 +62,35 @@ def test_invalidate_on_ccxt_change(migrated_uow) -> None:  # noqa: ANN001
         row = cert.get_cert(session)
         assert row is not None
         assert row.valid is False
+        assert row.invalidated_reason == "ccxt_version_changed"
+
+
+@pytest.mark.d1b
+def test_invalidate_records_all_change_reasons(migrated_uow) -> None:  # noqa: ANN001
+    with migrated_uow.session() as session:
+        cert.snapshot_versions(
+            session,
+            app_version="0.1.0a0",
+            ccxt_version="4.4.0",
+            endpoint_fingerprint="fp-old",
+            instrument_metadata_hash="hash-old",
+        )
+        row = cert.ensure_cert_row(session)
+        row.valid = True
+        session.add(row)
+        invalidate_on_change(
+            session,
+            reason="",
+            current_ccxt="4.5.0",
+            current_endpoint_fp="fp-new",
+            current_instrument_hash="hash-new",
+            current_app="0.1.0a1",
+        )
+        row = cert.get_cert(session)
+        assert row is not None
+        assert row.valid is False
+        assert row.invalidated_reason is not None
+        assert "ccxt_version_changed" in row.invalidated_reason
+        assert "endpoint_fingerprint_changed" in row.invalidated_reason
+        assert "instrument_metadata_changed" in row.invalidated_reason
+        assert "app_version_changed" in row.invalidated_reason

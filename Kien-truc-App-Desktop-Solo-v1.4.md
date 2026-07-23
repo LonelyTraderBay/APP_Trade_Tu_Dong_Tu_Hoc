@@ -879,7 +879,7 @@ Không tạo sẵn `ai/`, `backtest/`, `plugins/` hay `api/` trong D1. Phase nà
 | D0-03 | Chốt D1 runtime minor `3.14.x` (hoặc fallback ADR-D01); lockfile + smoke trước trading code | Chờ D1a-00 / merge D1a |
 | D0-04 | Hoàn thiện constitution + viết `AGENTS.md` trỏ v1.4 | **Xong** — Owner reviewed cùng D0 |
 | D0-05 | Viết `docs/mvp-capability-matrix.md` | **Xong** — Owner reviewed cùng D0 |
-| D0-06 | Review ToS sàn dự định dùng bot | **Mở** — Owner review ToS Binance Spot Testnet / bot trước credential DEMO |
+| D0-06 | Review ToS sàn dự định dùng bot | **Xong** 2026-07-23 — Owner chấp nhận ToS Binance Spot Testnet / bot (DEMO only; không withdraw LIVE) |
 | D0-07 | Xác nhận Windows 11 baseline hoặc Windows 10 22H2 có ESU | **Xong** — Windows 11 x64 |
 | D0-08 | Xác nhận mặc định kỹ thuật mục 07 (gồm 07.3 strategy), backup 7 bản, log 30 ngày | **Xong** — chấp nhận mặc định |
 | D0-09 | Duyệt mục 12.3/12.4; chấp nhận AI chỉ sau Backtest (D3→D4) | **Xong** 2026-07-23 |

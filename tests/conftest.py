@@ -19,6 +19,7 @@ from autotrade.persistence.uow import UnitOfWork
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "d1a: D1a exit / fault / integration suites")
     config.addinivalue_line("markers", "d1b: D1b DEMO allowlist / contract / fault / evidence")
+    config.addinivalue_line("markers", "d1c: D1c desktop UI / packaged ops suites")
 
 
 @pytest.fixture()

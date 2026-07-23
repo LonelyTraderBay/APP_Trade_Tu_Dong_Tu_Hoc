@@ -23,7 +23,7 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G1.1 | Broker Adapter Interface; không hard-code sàn trong Strategy/Risk/OMS | D1a/D1b | contract adapter; review import boundaries | 2026-07-23 mock: `BrokerAdapter` + `CcxtDemoAdapter`/`PaperAdapter`; OMS typed to protocol. **Owner REAL:** fill after V7/V8 |
+| G1.1 | Broker Adapter Interface; không hard-code sàn trong Strategy/Risk/OMS | D1a/D1b | contract adapter; review import boundaries | 2026-07-23 mock + REAL V7: `BrokerAdapter` protocol; OMS/Risk/Strategy không import `ccxt`; Spot exposure via balance (hotfix #8). Lifecycle real_testnet count=`52`. Soak V8 IN_PROGRESS — bổ sung khi `valid=true` |
 | G1.2 | Wizard tự kết nối | D1c | E2E UI Paper + DEMO | |
 | G1.3 | Chỉ tuple đã chứng nhận | D1b | allowlist negative test | 2026-07-23 `pytest -m d1b` — `test_allowlist_*`, `test_phase_boundary_d1b` PASS (`binance`/spot/testnet/`BTC/USDT`/`15m`) |
 | G1.4 | Chuẩn hoá symbol/margin/exposure | D1a | unit instrument + risk projection | |
@@ -78,7 +78,7 @@ Không có evidence = chưa pass gate.
 | ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | 2026-07-23: Alembic `0001_adr_d03_1`; `tests/unit/test_schema_adr_d03_1.py` PASS — đủ bảng ADR-D03.1, không `ai_*` |
 | ADR-D04 | Outbox durable; queue wake-only | D1a | restart replay outbox | 2026-07-23 `test_telegram_outbox_retry_and_dead_letter` |
 | ADR-D06 | keyring only | D1a | no secret in sqlite/log fixtures | 2026-07-23 `test_secret_redaction_in_notify_payloads` |
-| ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | 2026-07-23 harness mock PASS (`test_ccxt_demo_adapter`, `test_certification_records`, `test_cert_enable_gates`). **REAL in progress:** app=`0.1.0a0`; ccxt=`4.5.x`; tuple=`binance`/`spot`/`binance_spot_testnet`/`BTC/USDT`/`15m`; lifecycle≥50=`52` (V7 2026-07-23); soak≥72h=`IN_PROGRESS soak_cb50ba457b9d9a1b`; cert.valid=`false` until V8; evidence=`%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`. Hotfix Spot: no futures `fetch_positions`; vision+demo-api markers. |
+| ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | 2026-07-23 harness mock PASS. **REAL:** app=`0.1.0a0`; ccxt=`4.5.68`; tuple=`binance`/`spot`/`binance_spot_testnet`/`BTC/USDT`/`15m`; lifecycle≥50=`52` (V7 2026-07-23); soak≥72h=`IN_PROGRESS soak_cb50ba457b9d9a1b`; cert.valid=`false` until V8; evidence=`%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`. Hotfix Spot #8: no futures `fetch_positions`; vision+demo-api markers. |
 | ADR-D11 | PIN Argon2id + lockout | D1a | unit PIN + audit | 2026-07-23 `test_pin_verifier` |
 | ADR-D12 | Monotonic timeouts; clock skew | D1a | clock fault tests | 2026-07-23 `test_clock_jump_recovery` |
 | ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | 2026-07-23 headless stub + boundary (packaged E2E → D1c) |

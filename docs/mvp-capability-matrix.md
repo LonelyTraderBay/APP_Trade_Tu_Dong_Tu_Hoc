@@ -75,7 +75,7 @@ Không có evidence = chưa pass gate.
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
 | ADR-D01 | Pin one CPython minor (+ fallback) | D1a-00 | smoke Win clean + lockfile | 2026-07-23 branch `001-d1a-paper-core`: CPython **3.14.4**; `uv.lock` SHA256 `A9AA587170281CDB7A7206E5D4B8FBF6E36A99B065478A786A793E1F2D3F53E5`; deps allowlist only (no CCXT/PySide6/ML); `ruff check` PASS; `pytest --collect-only` (0 tests); `autotrade-headless --version` → 0.1.0a0 |
-| ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | |
+| ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | 2026-07-23: Alembic `0001_adr_d03_1`; `tests/unit/test_schema_adr_d03_1.py` PASS — đủ bảng ADR-D03.1, không `ai_*` |
 | ADR-D04 | Outbox durable; queue wake-only | D1a | restart replay outbox | |
 | ADR-D06 | keyring only | D1a | no secret in sqlite/log fixtures | |
 | ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | |

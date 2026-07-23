@@ -44,18 +44,18 @@ description: "Task list for D1a Paper Core implementation"
 **Purpose**: Shared domain ports + SQLite WAL schema (all ADR-D03.1 tables, no `ai_*`) blocking all stories  
 **⚠️ CRITICAL**: No US work until this phase completes
 
-- [ ] T007 Implement Clock ports (UTC wall + monotonic) and ID factories in `src/autotrade/core/domain/clock.py` and `src/autotrade/core/domain/ids.py`
-- [ ] T008 [P] Implement Decimal money/qty types and redaction helpers in `src/autotrade/core/domain/money.py` and `src/autotrade/core/domain/redaction.py`
-- [ ] T009 [P] Implement keyring secret-ref helpers (no plaintext) in `src/autotrade/persistence/secrets.py`
-- [ ] T010 Configure SQLAlchemy engine (WAL, `synchronous=FULL`, `foreign_keys=ON`, busy_timeout) in `src/autotrade/persistence/engine.py` with paths for `%LOCALAPPDATA%/AutoTradeAI/` and dev `data/`
-- [ ] T011 Define SQLAlchemy models for all ADR-D03.1 tables (no `ai_*`) in `src/autotrade/persistence/models/`
-- [ ] T012 Initialize Alembic and write migration creating ADR-D03.1 schema in `src/autotrade/persistence/alembic/`
-- [ ] T013 Implement pre-migration snapshot + integrity_check backup hook in `src/autotrade/persistence/backup.py`
-- [ ] T014 [P] Add unit tests for Decimal/clock/redaction in `tests/unit/test_domain_primitives.py`
-- [ ] T015 Add migration/roundtrip test asserting all ADR-D03.1 tables exist and no `ai_*` in `tests/unit/test_schema_adr_d03_1.py`
-- [ ] T016 [P] Add unit tests for `pin_verifier` Argon2id hash + lockout counters (schema usable; full Settings UI deferred to D1c) in `tests/unit/test_pin_verifier.py` and `src/autotrade/persistence/pin.py`
-- [ ] T017 Wire single-writer session/uow helper for atomic txns in `src/autotrade/persistence/uow.py`
-- [ ] T018 Implement asyncio composition root + OMS command-owner queue stub (no localhost HTTP) in `src/autotrade/entrypoints/headless.py` and `src/autotrade/core/runtime.py`
+- [x] T007 Implement Clock ports (UTC wall + monotonic) and ID factories in `src/autotrade/core/domain/clock.py` and `src/autotrade/core/domain/ids.py`
+- [x] T008 [P] Implement Decimal money/qty types and redaction helpers in `src/autotrade/core/domain/money.py` and `src/autotrade/core/domain/redaction.py`
+- [x] T009 [P] Implement keyring secret-ref helpers (no plaintext) in `src/autotrade/persistence/secrets.py`
+- [x] T010 Configure SQLAlchemy engine (WAL, `synchronous=FULL`, `foreign_keys=ON`, busy_timeout) in `src/autotrade/persistence/engine.py` with paths for `%LOCALAPPDATA%/AutoTradeAI/` and dev `data/`
+- [x] T011 Define SQLAlchemy models for all ADR-D03.1 tables (no `ai_*`) in `src/autotrade/persistence/models/`
+- [x] T012 Initialize Alembic and write migration creating ADR-D03.1 schema in `src/autotrade/persistence/alembic/`
+- [x] T013 Implement pre-migration snapshot + integrity_check backup hook in `src/autotrade/persistence/backup.py`
+- [x] T014 [P] Add unit tests for Decimal/clock/redaction in `tests/unit/test_domain_primitives.py`
+- [x] T015 Add migration/roundtrip test asserting all ADR-D03.1 tables exist and no `ai_*` in `tests/unit/test_schema_adr_d03_1.py`
+- [x] T016 [P] Add unit tests for `pin_verifier` Argon2id hash + lockout counters (schema usable; full Settings UI deferred to D1c) in `tests/unit/test_pin_verifier.py` and `src/autotrade/persistence/pin.py`
+- [x] T017 Wire single-writer session/uow helper for atomic txns in `src/autotrade/persistence/uow.py`
+- [x] T018 Implement asyncio composition root + OMS command-owner queue stub (no localhost HTTP) in `src/autotrade/entrypoints/headless.py` and `src/autotrade/core/runtime.py`
 
 **Checkpoint**: Foundation ready — US1 may start
 

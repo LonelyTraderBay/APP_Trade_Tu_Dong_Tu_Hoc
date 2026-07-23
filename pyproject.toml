@@ -13,6 +13,7 @@ dependencies = [
   "alembic>=1.13,<2",
   "keyring>=25,<26",
   "python-telegram-bot>=21,<23",
+  "argon2-cffi>=25.1.0",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
 
 **Nguồn quy phạm:** `Kien-truc-App-Desktop-Solo-v1.4.md`  
 **Mục đích:** mỗi yêu cầu → phase → loại test → evidence khi exit.  
-**Trạng thái:** D0 reviewed 2026-07-23 — Owner chấp nhận mặc định; exchange/symbol TBD tới D1b. Cột Evidence để trống đến khi phase chạy.
+**Trạng thái:** D0 reviewed 2026-07-23 — mặc định OK; **D0-11 chốt** 2026-07-23 (`binance` spot Binance Spot Testnet / `BTC/USDT` / `15m`). Cột Evidence để trống đến khi phase chạy.
 
 ---
 
@@ -98,9 +98,9 @@ Mỗi hàng fault D1 (không gồm hàng D4) phải có evidence trước exit D
 
 | Phase | Exit đo được (v1.4 §14) | Matrix rows phải xanh |
 |---|---|---|
-| D0 | Mục 20 ký; mục 16 mặc định OK; exchange TBD | D0-01…05, 07…10 |
+| D0 | Mục 20 ký; mục 16 OK; **D0-11 xong** (`binance`/spot/testnet/`BTC/USDT`/`15m`) | D0-01…05, 07…11; D0-06 Owner ToS trước credential DEMO |
 | D1a | Fault + Paper FSM (symbol nội bộ) | G3, G4.1, G5, ADR-D03.1, fault D1 |
-| D1b | Sau D0-11 (chốt sàn) + DEMO lifecycle + soak ≥72h | G1, ADR-D09, E2E DEMO |
+| D1b | D0-11 + D1a merged + DEMO lifecycle ≥50 + soak ≥72h | G1, ADR-D09, E2E DEMO |
 | D1c | Installer + UI MVP + soak ≥14d ops | G6, G7 UX, packaged |
 | D3 | Repeatable backtest; freeze feature/label | §07.4, §12.1 |
 | D4 | AI contract + Learning Store + promote drill | G4.2–G4.5, §12.3–12.4 |
@@ -112,6 +112,6 @@ Mỗi hàng fault D1 (không gồm hàng D4) phải có evidence trước exit D
 - [x] Đã đọc matrix này và khớp v1.4  
 - [x] Đồng ý không đánh dấu pass khi thiếu Evidence  
 - [x] Đồng ý D4 rows không thuộc MVP  
-- [x] Đồng ý exchange/symbol TBD không mở D1b/LIVE  
+- [x] Đồng ý exchange/symbol **đã chốt D0-11** chỉ mở D1b DEMO (không mở LIVE) sau merge D1a + certification  
 
-**Chữ ký / ngày:** Owner (C-PC) / 2026-07-23
+**Chữ ký / ngày:** Owner (C-PC) / 2026-07-23 (D0); D0-11 amend 2026-07-23

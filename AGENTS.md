@@ -16,7 +16,7 @@ Enterprise blueprint (nếu có) chỉ tham khảo; **không** ghi đè v1.4.
 |---|---|---|
 | **D0** | Chỉ tài liệu / gate Owner | Không scaffold trading app “cho vui” |
 | **D1a** | Domain, SQLite ADR-D03.1, Paper, Risk, OMS, Recovery, Telegram | CCXT thật, UI đầy đủ, ML, `ai_*`, backtest UI |
-| **D1b** | Một CCXT DEMO allowlist — **chỉ sau khi mục 16 chốt exchange/symbol** (D0-11) | Multi-exchange, LIVE; không bỏ qua DEMO/certification để “cắm LIVE ngay” |
+| **D1b** | Một CCXT DEMO allowlist — tuple mục 16: `binance` + spot + Binance Spot Testnet + `BTC/USDT` + `15m` (D0-11 **xong**) | Multi-exchange, LIVE; không bỏ qua DEMO/certification để “cắm LIVE ngay” |
 | **D1c** | PySide6 MVP + installer | AI Center, Backtest UI |
 | **D3** | Backtest/replay deterministic | Train ML |
 | **D4** | AI Module + Learning Store + sidecar | Auto-promote LIVE; AI gọi OMS |
@@ -33,7 +33,7 @@ Enterprise blueprint (nếu có) chỉ tham khảo; **không** ghi đè v1.4.
 - Strategy D1 mặc định: `rule_sma_cross_v1` (mục 07.3) trừ khi mục 16 ghi rule khác.
 - Feature có `feature_schema_version`; chỉ closed candle.
 - LIVE hard-disable tới gate D1.1 riêng; attended-only ở baseline.
-- Exchange/symbol có thể TBD ở D0; **D1a dùng Paper + symbol nội bộ**. Không implement CCXT trading cho tới D0-11.
+- Exchange/symbol D1b **đã chốt** mục 16 (`binance` / spot / Binance Spot Testnet / `BTC/USDT` / `15m`). D1a dùng Paper + symbol nội bộ. Không implement CCXT trading trước khi D1a merge `main` + Spec Kit D1b plan/tasks.
 
 ## Cách triển khai an toàn
 

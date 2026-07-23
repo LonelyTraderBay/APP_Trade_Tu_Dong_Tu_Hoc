@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from autotrade.core.adapters.paper import PaperAdapter
+from autotrade.core.adapters.protocol import BrokerAdapter
 from autotrade.core.domain.ids import IdFactory
 from autotrade.core.domain.money import d
 from autotrade.core.domain.redaction import redact_mapping
@@ -66,7 +66,7 @@ class SubmitResult:
 @dataclass
 class DurableSubmitter:
     uow: UnitOfWork
-    adapter: PaperAdapter
+    adapter: BrokerAdapter
     risk: RiskEngine
     gate: AccountGate
     ids: IdFactory = field(default_factory=IdFactory)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from autotrade.core.adapters.paper import PaperAdapter
+from autotrade.core.adapters.protocol import BrokerAdapter
 from autotrade.core.domain.money import d
 from autotrade.core.ledger.fills import ingest_fill
 from autotrade.core.oms.fsm import DeliveryCertainty, IntentState
@@ -16,7 +16,7 @@ from autotrade.persistence.uow import UnitOfWork
 
 def resolve_unknown(
     uow: UnitOfWork,
-    adapter: PaperAdapter,
+    adapter: BrokerAdapter,
     risk: RiskEngine,
     *,
     intent_id: str,

@@ -69,19 +69,19 @@ description: "Task list for D1a Paper Core implementation"
 
 ### T2 — Fake/Paper adapter + contract stubs
 
-- [ ] T019 [US1] Define Broker Adapter Interface + Paper manifest in `src/autotrade/core/adapters/protocol.py` and `src/autotrade/core/adapters/manifest.py`
-- [ ] T020 [US1] Implement FakeBroker/PaperAdapter (full fill + fee/slippage; fault-injection hooks; `upsert_protection`; no OHLC partial inference) in `src/autotrade/core/adapters/paper.py`
-- [ ] T021 [P] [US1] Add contract tests for place/query/cancel/full-fill/pagination/client-id lookup/**protection upsert + failure**/injected partial-late hooks in `tests/contract/test_paper_adapter.py`
-- [ ] T022 [P] [US1] Add import-boundary test ensuring `strategy`/`risk`/`oms` do not import CCXT or venue SDKs in `tests/unit/test_import_boundaries.py`
+- [x] T019 [US1] Define Broker Adapter Interface + Paper manifest in `src/autotrade/core/adapters/protocol.py` and `src/autotrade/core/adapters/manifest.py`
+- [x] T020 [US1] Implement FakeBroker/PaperAdapter (full fill + fee/slippage; fault-injection hooks; `upsert_protection`; no OHLC partial inference) in `src/autotrade/core/adapters/paper.py`
+- [x] T021 [P] [US1] Add contract tests for place/query/cancel/full-fill/pagination/client-id lookup/**protection upsert + failure**/injected partial-late hooks in `tests/contract/test_paper_adapter.py`
+- [x] T022 [P] [US1] Add import-boundary test ensuring `strategy`/`risk`/`oms` do not import CCXT or venue SDKs in `tests/unit/test_import_boundaries.py`
 
 ### T3 — Market / features / rule_sma_cross_v1
 
-- [ ] T023 [US1] Implement synthetic instrument `PAPER-INTERNAL-1` cache helpers (normalized tick/lot/exposure fields for Risk) in `src/autotrade/core/market/instruments.py`
-- [ ] T024 [P] [US1] Implement closed-candle store/ingest (reject open candles for signals) in `src/autotrade/core/market/candles.py`
-- [ ] T025 [US1] Implement FeatureEngine with `feature_schema_version` snapshots in `src/autotrade/core/features/engine.py`
-- [ ] T026 [US1] Implement `rule_sma_cross_v1` (defaults 10/30/ATR14/k=1.5/cooldown 3; spot long-only; abstain rules) in `src/autotrade/core/strategy/rule_sma_cross_v1.py`
-- [ ] T027 [P] [US1] Add unit tests for SMA/ATR/cooldown/abstain/long-only/closed-candle in `tests/unit/test_rule_sma_cross_v1.py`
-- [ ] T028 [US1] Add integration stub Strategy→features→signals only (not full OMS) in `tests/integration/test_paper_signal_replay.py`
+- [x] T023 [US1] Implement synthetic instrument `PAPER-INTERNAL-1` cache helpers (normalized tick/lot/exposure fields for Risk) in `src/autotrade/core/market/instruments.py`
+- [x] T024 [P] [US1] Implement closed-candle store/ingest (reject open candles for signals) in `src/autotrade/core/market/candles.py`
+- [x] T025 [US1] Implement FeatureEngine with `feature_schema_version` snapshots in `src/autotrade/core/features/engine.py`
+- [x] T026 [US1] Implement `rule_sma_cross_v1` (defaults 10/30/ATR14/k=1.5/cooldown 3; spot long-only; abstain rules) in `src/autotrade/core/strategy/rule_sma_cross_v1.py`
+- [x] T027 [P] [US1] Add unit tests for SMA/ATR/cooldown/abstain/long-only/closed-candle in `tests/unit/test_rule_sma_cross_v1.py`
+- [x] T028 [US1] Add integration stub Strategy→features→signals only (not full OMS) in `tests/integration/test_paper_signal_replay.py`
 
 **Checkpoint**: US1 MVP — deterministic signals + Paper adapter contracts green
 

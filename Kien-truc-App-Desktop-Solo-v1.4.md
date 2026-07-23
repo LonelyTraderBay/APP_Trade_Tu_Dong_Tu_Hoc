@@ -856,7 +856,7 @@ Không tạo sẵn `ai/`, `backtest/`, `plugins/` hay `api/` trong D1. Phase nà
 
 | Giai đoạn | Mục tiêu | Exit (đo được) |
 |---|---|---|
-| **D0 — Khoá tài liệu** | Duyệt v1.4; mặc định mục 16; exchange TBD (D0-11); companion docs | **Đạt cho D1a** 2026-07-23; D1b chờ D0-11 |
+| **D0 — Khoá tài liệu** | Duyệt v1.4; mặc định mục 16; D0-11 chốt DEMO tuple | **Đạt cho D1a** 2026-07-23; **D0-11 xong** 2026-07-23 (`binance` spot testnet `BTC/USDT` `15m`) |
 | **D1a — Deterministic core/Paper** | Domain + SQLite journal/outbox + fake/Paper + Risk/OMS/KS/Recovery + Telegram; chưa CCXT/UI | Unit/state/integration/fault suite mục 18 pass; crash scripted không tạo duplicate exposure |
 | **D1b — Một CCXT DEMO** | Một exchange/market/account/symbol đã chọn; contract suite và real DEMO | ≥50 completed lifecycles, injected faults pass, continuous run ≥72h không unresolved recon |
 | **D1c — Desktop MVP** | UI tối thiểu + installer + vận hành Windows | Clean Win11 x64 install; single-instance, sleep/resume, backup/restore/manual-upgrade pass; operational soak tổng ≥14 ngày |
@@ -875,16 +875,16 @@ Không tạo sẵn `ai/`, `backtest/`, `plugins/` hay `api/` trong D1. Phase nà
 | ID | Việc | Trạng thái |
 |---|---|---|
 | D0-01 | Review và ký tiêu chí mục 20 cho file v1.4 | **Xong** 2026-07-23 (D1a only) |
-| D0-02 | Điền các lựa chọn bắt buộc ở mục 16 | **Xong** mặc định; exchange/symbol TBD → D1b |
-| D0-03 | Chốt D1 runtime minor `3.14.x` (hoặc fallback ADR-D01); lockfile + smoke trước trading code | Chờ D1a-00 |
+| D0-02 | Điền các lựa chọn bắt buộc ở mục 16 | **Xong** — gồm D0-11 tuple DEMO 2026-07-23 |
+| D0-03 | Chốt D1 runtime minor `3.14.x` (hoặc fallback ADR-D01); lockfile + smoke trước trading code | Chờ D1a-00 / merge D1a |
 | D0-04 | Hoàn thiện constitution + viết `AGENTS.md` trỏ v1.4 | **Xong** — Owner reviewed cùng D0 |
 | D0-05 | Viết `docs/mvp-capability-matrix.md` | **Xong** — Owner reviewed cùng D0 |
-| D0-06 | Review ToS sàn dự định dùng bot | **Hoãn** tới khi chốt exchange (trước D1b) |
+| D0-06 | Review ToS sàn dự định dùng bot | **Mở** — Owner review ToS Binance Spot Testnet / bot trước credential DEMO |
 | D0-07 | Xác nhận Windows 11 baseline hoặc Windows 10 22H2 có ESU | **Xong** — Windows 11 x64 |
 | D0-08 | Xác nhận mặc định kỹ thuật mục 07 (gồm 07.3 strategy), backup 7 bản, log 30 ngày | **Xong** — chấp nhận mặc định |
 | D0-09 | Duyệt mục 12.3/12.4; chấp nhận AI chỉ sau Backtest (D3→D4) | **Xong** 2026-07-23 |
 | D0-10 | Duyệt ADR-D03.1 (schema trading) + 07.4 (feature port) | **Xong** 2026-07-23 |
-| D0-11 | Chốt CCXT exchange + market + sandbox + symbol/TF ở mục 16 | **Mở** trước D1b |
+| D0-11 | Chốt CCXT exchange + market + sandbox + symbol/TF ở mục 16 | **Xong** 2026-07-23 — `binance` + spot + Binance Spot Testnet + `BTC/USDT` + `15m` |
 
 Backlog code **D1a** được phép sau D0-01…D0-05, D0-07…D0-10. D0-06 và D0-11 bắt buộc trước **D1b**. D0-09 không chặn D1a. LIVE tasks không được trộn vào D1a–D1c.
 
@@ -894,12 +894,13 @@ Backlog code **D1a** được phép sau D0-01…D0-05, D0-07…D0-10. D0-06 và 
 
 > Không ghi API key, password, PIN, Bot Token, Chat ID/User ID thật vào file/repo. Các giá trị secret/identifier được nhập trong app khi phase tương ứng chạy.
 >
-> **Chốt D0 (2026-07-23):** chấp nhận mặc định kỹ thuật; **exchange/symbol/sandbox để TBD** — bắt buộc chốt trước khi mở **D1b** (không chặn **D1a Paper**).
+> **Chốt D0 (2026-07-23):** chấp nhận mặc định kỹ thuật.  
+> **Chốt D0-11 (2026-07-23):** DEMO allowlist tuple cho **D1b** (không mở LIVE).
 
 | Hạng mục | Bắt buộc? | Giá trị Owner điền |
 |---|---|---|
-| CCXT exchange + market + sandbox endpoint D1b | Có **trước D1b** | **TBD** — Owner chọn khi chuẩn bị DEMO; chưa chốt sàn lúc D0 |
-| Symbol + timeframe rule strategy đầu tiên | Có **trước D1b** (Paper D1a dùng symbol nội bộ giả lập) | **TBD** — cùng lúc chốt với exchange; ứng viên gợi ý khi chốt: `BTC/USDT` + `15m` |
+| CCXT exchange + market + sandbox endpoint D1b | Có **trước D1b** | **`binance` + spot + Binance Spot Testnet** (DEMO only; không LIVE) |
+| Symbol + timeframe rule strategy đầu tiên | Có **trước D1b** (Paper D1a dùng symbol nội bộ giả lập) | **`BTC/USDT` + `15m`** |
 | Xác nhận strategy `rule_sma_cross_v1` (mục 07.3) hoặc ghi rule_id thay thế | Có | **Chấp nhận** `rule_sma_cross_v1` |
 | Tham số strategy (N_fast/N_slow/ATR/k/cooldown) — chấp nhận mặc định hoặc ghi khác | Có | **Chấp nhận mặc định** (10 / 30 / ATR14 / k=1.5 / cooldown 3) |
 | Spot long-only D1 (khuyến nghị) hay cho phép short | Có | **Spot long-only D1** |
@@ -911,9 +912,9 @@ Backlog code **D1a** được phép sau D0-01…D0-05, D0-07…D0-10. D0-06 và 
 | Ngôn ngữ UI | Không (mặc định Tiếng Việt) | Tiếng Việt |
 | Backup 7 bản / log 30 ngày | Có (D0-08) | **Chấp nhận mặc định** |
 
-**Ghi chú D0:** “TBD sàn” không đồng nghĩa được phép LIVE hay bỏ certification. Khi test DEMO/LIVE sau này vẫn phải qua allowlist + contract test đúng tuple đã chốt — không “cắm sàn thật” ngoài quy trình mục 05/06.
+**Ghi chú D0-11:** Tuple đã chốt chỉ mở **D1b DEMO** sau khi D1a merge + D0-06 ToS Owner xong + contract/fault/lifecycle/soak gates. Không đồng nghĩa LIVE hay bỏ certification. Không “cắm sàn/mode khác” ngoài quy trình mục 05/06.
 
-Nếu các mục bắt buộc **cho phase đang mở** còn trống thì chưa mở phase đó. D1a được mở khi các dòng không-TBD ở trên đã chấp nhận. Việc chọn exchange/symbol không đồng nghĩa cho phép LIVE.
+Nếu các mục bắt buộc **cho phase đang mở** còn trống thì chưa mở phase đó. Việc chọn exchange/symbol **không** đồng nghĩa cho phép LIVE.
 
 ---
 

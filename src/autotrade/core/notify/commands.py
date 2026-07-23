@@ -46,7 +46,8 @@ class CommandHandler:
             accepted = False
             reason = "ttl_exceeded"
 
-        text = (cmd.text or "").strip().split()[0] if cmd.text else ""
+        parts = (cmd.text or "").strip().split()
+        text = parts[0] if parts else ""
         if accepted and text not in ALLOWED:
             accepted = False
             reason = "command_not_allowed"

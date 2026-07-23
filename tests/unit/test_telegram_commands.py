@@ -49,3 +49,10 @@ def test_telegram_commands(migrated_uow) -> None:  # noqa: ANN001
             InboundCommand(4, "chat1", "user1", "/flatten", now),
         )
         assert bad["reason"] == "command_not_allowed"
+
+        whitespace = handler.handle(
+            session,
+            InboundCommand(5, "chat1", "user1", "   ", now),
+        )
+        assert whitespace["ok"] is False
+        assert whitespace["reason"] == "command_not_allowed"

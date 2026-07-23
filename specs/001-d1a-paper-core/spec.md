@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-23
 
-**Status**: Draft
+**Status**: Ready for implementation
 
 **Input**: User description: "Xây dựng MVP D1a của AutoTrade AI Desktop Solo theo Kien-truc-App-Desktop-Solo-v1.4.md và docs/mvp-capability-matrix.md — domain/journal/Paper/Risk/OMS/Recovery/Telegram; OUT: CCXT/UI/LIVE/AI."
 
@@ -18,6 +18,7 @@
 - Q: Telegram inbound/outbound failure policy → A: Dedup update_id; wrong chat/user → reject+audit; command TTL 60s; transient → retry; permanent 4xx → dead-letter; journal retains source events.
 - Q: D1a Paper symbol identity vs D1b exchange TBD → A: Synthetic internal id only for D1a (no real venue/symbol hard-code); timeframe Owner-configured; D1b binds real tuple after D0-11.
 - Post-analyze remediation: SC-007 includes digest+test message; OMS UNKNOWN ≠ Telegram delivery retry; PIN unit in D1a; toast UI deferred to D1c.
+- Step A checklist remediation: disk/DB/mandatory commit fail → SAFE_LOCK; Telegram missing/invalid credentials → must not enter trade-enabled READY.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -100,14 +101,15 @@ As the Owner, I receive event-driven Telegram reports and can query status/P&L o
 - Partial/late fills appear only via explicit fault injection (or explicit bid/ask size fixtures if later added); during protection attach/update, protection quantity tracks fill and failure escalates to safe flatten/lock for Paper.
 - Duplicate delivery of the same fill: only one economic effect.
 - Quote/candle stale or clock skew beyond policy: fail-closed (no new exposure); account not READY.
-- Disk full / journal write failure mid-commit: no SUBMITTING/send; recoverable error surfaced; no partial “sent without durable intent.”
-- Mandatory pre-SUBMITTING commit fails → adapter MUST NOT be called.
+- Disk full, DB busy/corruption, migration failure, or mandatory journal commit failure: account enters **SAFE_LOCK** (or equivalent lock): no new SUBMITTING/send, no exposure increase; error is auditable/outbox-notified; no partial “sent without durable intent.”
+- Mandatory pre-SUBMITTING commit fails → adapter MUST NOT be called; treat as fail-closed / SAFE_LOCK path above.
 - Strategy cooldown window after exit: no new entries for M closed candles (default 3).
 - Short signals on spot long-only Paper: ignored/abstained.
 - Simultaneous local Pause and Telegram `/pause`: effective KS is the highest required level; no auto-downgrade on restart.
 - Recovery missing data, auth/connect fail, incomplete pagination, or stale/unresolved breaks: account stays locked / not READY; no exposure increase; KS not auto-lowered; Recovery failure/SEV1 via outbox.
 - Telegram command older than 60s TTL, or from wrong chat/user: reject + audit; `update_id` still persisted for dedup.
 - Telegram outbox: transient failures retry with bounded backoff; permanent 4xx → dead-letter; source events remain in the journal.
+- Telegram not configured, credentials missing/invalid, or keyring lookup fails: MUST NOT enter trade-enabled READY; exposure increases remain blocked (fail-closed). Headless may still boot for diagnostics/recovery; Owner must configure valid bot+chat+user (via keyring) before READY. Wrong credentials that cause permanent auth failure on outbound MUST dead-letter affected items without unlocking unsafe trading.
 
 ## Requirements *(mandatory)*
 

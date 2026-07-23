@@ -33,25 +33,25 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G2.1–G2.3 | PAPER/DEMO/LIVE tách; Paper deterministic | D1a | property + Paper seed replay | |
-| G2.4–G2.5 | LIVE hard-disable tới gate | D1a/D1.1 | UI/state cannot enable LIVE in D1 | |
+| G2.1–G2.3 | PAPER/DEMO/LIVE tách; Paper deterministic | D1a | property + Paper seed replay | 2026-07-23 `pytest -m d1a` — `test_paper_replay_seed`, durable submit PASS |
+| G2.4–G2.5 | LIVE hard-disable tới gate | D1a/D1.1 | UI/state cannot enable LIVE in D1 | 2026-07-23 `test_phase_boundary_d1a` — PAPER-only manifest; no LIVE mode |
 
 ## G3 — An toàn vốn / OMS / Recovery
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G3.1 | Tăng exposure qua Risk + reservation | D1a | integration + unit Decimal | |
-| G3.2 | L1–L4; Telegram chỉ Pause | D1a | KS scope tests; Telegram command suite | |
-| G3.3 | Durable intent; UNKNOWN không retry mù | D1a | fault matrix crash/timeout | |
-| G3.4 | Recon; broker sự thật hiện tại | D1a | recon orphan/missing fill | |
+| G3.1 | Tăng exposure qua Risk + reservation | D1a | integration + unit Decimal | 2026-07-23 `test_risk_and_ks`, `test_durable_submit_paper_fill` |
+| G3.2 | L1–L4; Telegram chỉ Pause | D1a | KS scope tests; Telegram command suite | 2026-07-23 `test_ks_persist_restart`, `test_telegram_commands` (/pause→L1) |
+| G3.3 | Durable intent; UNKNOWN không retry mù | D1a | fault matrix crash/timeout | 2026-07-23 crash/commit/timeout UNKNOWN tests PASS |
+| G3.4 | Recon; broker sự thật hiện tại | D1a | recon orphan/missing fill | 2026-07-23 `test_recon_orphans` |
 | G3.5 | Stop native LIVE bắt buộc | D1.1 | LIVE fault protection | |
-| G3.6–G3.7 | Startup Recovery; eligibility machine | D1a/D1.1 | recovery scripted + eligibility unit | |
+| G3.6–G3.7 | Startup Recovery; eligibility machine | D1a/D1.1 | recovery scripted + eligibility unit | 2026-07-23 `test_startup_recovery_*` (D1a Paper) |
 
 ## G4 — Strategy / AI
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G4.1 | Rule strategy + 1 symbol/TF | D1a | deterministic signal tests `rule_sma_cross_v1` | |
+| G4.1 | Rule strategy + 1 symbol/TF | D1a | deterministic signal tests `rule_sma_cross_v1` | 2026-07-23 `test_rule_sma_cross_v1`, `test_paper_signal_replay` |
 | G4.2–G4.3 | AI sau Backtest; retrain sidecar; promote thủ công | D4 | walk-forward + promote drill | |
 | G4.4 | AI Module Interface + contract | D4 | AI contract suite §12.3.3 | |
 | G4.5 | Learning Store + namespaces | D4 | lineage + namespace retrieve tests | |
@@ -62,7 +62,7 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G5.1–G5.5 | Config test; push events; digest ngày; `/status|/pnl|/pause`; mode trên tin | D1a | outbox retry/dedup; reject wrong chat; redaction | |
+| G5.1–G5.5 | Config test; push events; digest ngày; `/status|/pnl|/pause`; mode trên tin | D1a | outbox retry/dedup; reject wrong chat; redaction | 2026-07-23 telegram commands/digest/outbox/redaction tests PASS |
 
 ## G6 — Desktop
 
@@ -74,14 +74,14 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| ADR-D01 | Pin one CPython minor (+ fallback) | D1a-00 | smoke Win clean + lockfile | |
-| ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | |
-| ADR-D04 | Outbox durable; queue wake-only | D1a | restart replay outbox | |
-| ADR-D06 | keyring only | D1a | no secret in sqlite/log fixtures | |
+| ADR-D01 | Pin one CPython minor (+ fallback) | D1a-00 | smoke Win clean + lockfile | 2026-07-23 branch `001-d1a-paper-core`: CPython **3.14.4**; `uv.lock` SHA256 `A9AA587170281CDB7A7206E5D4B8FBF6E36A99B065478A786A793E1F2D3F53E5`; deps allowlist only (no CCXT/PySide6/ML); `ruff check` PASS; `pytest --collect-only` (0 tests); `autotrade-headless --version` → 0.1.0a0 |
+| ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | 2026-07-23: Alembic `0001_adr_d03_1`; `tests/unit/test_schema_adr_d03_1.py` PASS — đủ bảng ADR-D03.1, không `ai_*` |
+| ADR-D04 | Outbox durable; queue wake-only | D1a | restart replay outbox | 2026-07-23 `test_telegram_outbox_retry_and_dead_letter` |
+| ADR-D06 | keyring only | D1a | no secret in sqlite/log fixtures | 2026-07-23 `test_secret_redaction_in_notify_payloads` |
 | ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | |
-| ADR-D11 | PIN Argon2id + lockout | D1a | unit PIN + audit | |
-| ADR-D12 | Monotonic timeouts; clock skew | D1a | clock fault tests | |
-| ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | |
+| ADR-D11 | PIN Argon2id + lockout | D1a | unit PIN + audit | 2026-07-23 `test_pin_verifier` |
+| ADR-D12 | Monotonic timeouts; clock skew | D1a | clock fault tests | 2026-07-23 `test_clock_jump_recovery` |
+| ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | 2026-07-23 headless stub + boundary (packaged E2E → D1c) |
 | ADR-D14 | LIVE eligibility key | D1.1 | eligibility invalidation tests | |
 
 ## Fault matrix (mục 18.2) — D1a tối thiểu

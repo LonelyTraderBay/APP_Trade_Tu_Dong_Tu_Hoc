@@ -1,0 +1,50 @@
+# AutoTrade AI Desktop Solo — local ignores (D1a)
+
+# Python / venv
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+
+# Dev data & local runtime mirrors (never commit secrets/DB)
+data/*
+!data/.gitkeep
+# LocalAppData AutoTradeAI copies if mirrored into repo by mistake
+AutoTradeAI/
+**/autotrade.sqlite3
+**/autotrade.sqlite3-*
+
+# Evidence / reports (fill matrix from CI artifacts; keep local)
+evidence/
+reports/
+*.evidence.json
+pytest-report.xml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env / secrets (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key

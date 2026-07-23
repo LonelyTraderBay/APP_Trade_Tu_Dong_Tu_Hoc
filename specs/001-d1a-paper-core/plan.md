@@ -23,7 +23,7 @@ Technical approach: one asyncio process, single OMS command owner, SQLAlchemy 2.
 - stdlib `asyncio`, `decimal`, `zoneinfo` as needed
 - **Forbidden in D1a**: FastAPI, Electron, scikit-learn, sqlite-vec, FAISS, CCXT (trading), full PySide6 UI/installer (D1c later), MetaTrader5
 
-**Storage**: SQLite WAL (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, bounded `busy_timeout`); runtime `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`; dev `data/` (gitignore)
+**Storage**: SQLite WAL (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, bounded `busy_timeout`); runtime `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`; dev `data/` (gitignore). **ADR-D03 fail-closed**: disk full, corruption, migration fail, or mandatory commit fail → `SAFE_LOCK` (no new exposure / no send).
 
 **Testing**: pytest — `tests/unit|contract|integration|fault` (+ evidence reports for matrix). Packaged E2E deferred to D1c.
 
@@ -151,6 +151,13 @@ All tables listed in `data-model.md` must exist before D1a exit; **no** `ai_*`.
 1. Create project skeleton + dependency lock with hashes.
 2. Smoke on clean Windows: import/runtime for allowlisted deps; ruff; pytest collect empty/smoke.
 3. If 3.14.x fails → document fallback minor in this plan addendum + `docs/mvp-capability-matrix.md` ADR-D01 row **before** trading PRs merge.
+
+### D1a-00 evidence (2026-07-23)
+
+- **Pinned**: CPython 3.14.4 (`.python-version` + `requires-python = ">=3.14,<3.15"`).
+- **Lock**: `uv.lock` SHA256 `A9AA587170281CDB7A7206E5D4B8FBF6E36A99B065478A786A793E1F2D3F53E5`.
+- **Smoke**: allowlisted imports OK; `ruff check src tests` PASS; `pytest --collect-only` (no tests yet); headless `--version` OK.
+- **Fallback**: not activated.
 
 ## Later phases (not planned here)
 

@@ -21,10 +21,15 @@ description: "Task list template for feature implementation"
 
 ## Path Conventions
 
+- **AutoTrade Desktop Solo (default)**: `src/autotrade/` (v1.4 §13); tests under
+  `tests/unit|contract|integration|fault|packaged`
 - **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **Web app / Mobile**: not in MVP scope (constitution: one process, no localhost HTTP API)
+- Paths shown below assume desktop solo layout - adjust based on plan.md structure
+
+**Phase guard (constitution IV/VII):** Task lists for D1 MUST NOT add scikit-learn,
+sqlite-vec, FAISS, `ai_*` tables, multi-exchange, LIVE enablement, or CCXT trading before
+D0-11. Prefer unit/FSM → contract → fault tasks before UI polish.
 
 <!--
   ============================================================================
@@ -61,14 +66,14 @@ description: "Task list template for feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-Examples of foundational tasks (adjust based on your project):
+Examples of foundational tasks (adjust to active phase; D1a-oriented defaults):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004 Setup SQLite schema/migrations per ADR-D03.1 (no `ai_*` in D1)
+- [ ] T005 [P] Domain types + Clock/ID ports (Decimal/UTC; no broker types in Strategy)
+- [ ] T006 [P] Keyring secret access + redaction helpers (no plaintext secrets)
+- [ ] T007 Create core entities (accounts, intents, risk reservations, audit/outbox)
+- [ ] T008 Configure structured logging + JSONL diagnostics (secrets redacted)
+- [ ] T009 Wire single-process composition root (no localhost HTTP API)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

@@ -21,3 +21,7 @@ class IdFactory:
         # Deterministic-length token suitable for broker client IDs.
         token = secrets.token_hex(16)
         return f"{self.prefix}c_{token}" if self.prefix else f"c_{token}"
+
+    def new(self, kind: str) -> str:
+        token = secrets.token_hex(8)
+        return f"{kind}_{token}"

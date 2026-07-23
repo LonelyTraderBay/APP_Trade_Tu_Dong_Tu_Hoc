@@ -12,6 +12,8 @@
 - Testnet API key in OS keyring via CLI only — **never** commit secrets
 - Docs: [plan.md](./plan.md), [data-model.md](./data-model.md), [contracts/](./contracts/)
 
+**Real-network gate:** set `AUTOTRADE_D1B_REAL=1` only for Owner-attended V7/V8 on Binance Spot Testnet. Default CI/dev runs use mocks; never commit API keys.
+
 ## Dev data paths
 
 - Runtime DB: `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`
@@ -79,31 +81,86 @@ Expect: §18-aligned DEMO faults PASS; do **not** increment lifecycle counter.
 ### V7 — Real testnet ≥50 lifecycles (SC-004) — Owner attended
 
 ```text
-# After: CLI store credentials + test-connection + cert contract/fault recorded
+# 0) ToS + testnet key (trade-only, no withdraw) — never commit secrets
+# 1) Store creds + probe
+autotrade-headless demo-store-creds --account-id demo-binance
 set AUTOTRADE_D1B_REAL=1
-pytest tests/evidence/test_demo_lifecycles_real.py
-# or documented headless evidence harness from tasks
+autotrade-headless demo-test-connection
+
+# 2) Mark mock suites (after pytest contract/fault green)
+autotrade-headless cert-mark-contract
+autotrade-headless cert-mark-fault
+autotrade-headless cert-status
+
+# 3) Smoke 1–2 round-trips, then full ≥50
+set AUTOTRADE_D1B_LIFECYCLE_COUNT=2
+pytest tests/evidence/test_demo_lifecycles_real.py -m d1b
+# or:
+autotrade-headless run-lifecycles --count 2 --account-id demo-binance
+
+set AUTOTRADE_D1B_LIFECYCLE_COUNT=50
+autotrade-headless run-lifecycles --count 50 --account-id demo-binance
+autotrade-headless cert-status
 ```
 
-Expect: evidence log shows ≥50 **round-trip-to-flat** DONE events on Binance Spot Testnet; mock runs absent from count.
+Expect: `lifecycle_count >= 50`; only `source=real_testnet` counted; no UNKNOWN left open; secrets redacted in logs.
 
 ### V8 — Real testnet soak ≥72h (SC-005) — Owner attended
 
 ```text
 set AUTOTRADE_D1B_REAL=1
-# start soak harness; no Owner pause; sleep/resume only with clean recovery
+# Full continuous soak (writes soak_passed + try_promote_valid when ≥72h + unresolved=0)
+autotrade-headless run-soak --hours 72 --heartbeat-seconds 300 --account-id demo-binance
+
+# Monitor / abort (abort = Owner pause → continuous gate FAIL — do not use for exit)
+autotrade-headless soak-status
+# autotrade-headless soak-abort
+
+# Short local smoke only (does NOT write cert valid):
+# autotrade-headless run-soak --hours 0.01
+# pytest evidence soak smoke (connect+abort) when REAL=1
 ```
 
-Expect: wall-clock ≥72h; end recon unresolved count = 0; pause → gate fail.
+Expect: wall-clock ≥72h; no Owner pause; sleep/resume OK only if recovery/recon clean; end `unresolved_recon=0`; then `cert-status` shows `soak_passed=true` and `valid=true` (if lifecycle≥50 + contract/fault already marked).
 
-### V9 — CLI + Telegram mode tag
+### V9 — enable-demo after valid cert
 
 ```text
-autotrade-headless … status
+autotrade-headless cert-status
+autotrade-headless enable-demo --account-id demo-binance
+autotrade-headless status
+```
+
+Expect: enable refused while `valid=false`; succeeds only after V7+V8 promote.
+
+### V10 — CLI + Telegram mode tag
+
+```text
+autotrade-headless status
 # Telegram /status shows mode=DEMO or PAPER
 ```
 
 Expect: secrets redacted; mode matches active account.
+
+## Owner runbook — D1b exit (attended)
+
+Complete in order; **do not** fake soak duration for `valid=true`.
+
+| Step | Action | Done when |
+|---|---|---|
+| R0.1 | D0-06 ToS Binance Spot Testnet / bot | Owner reviewed |
+| R0.2 | Create testnet API key (trade-only, **no withdraw**) | Key in OS keyring via `demo-store-creds` |
+| R0.3 | Windows machine stays available; sleep/resume OK if recovery clean | Machine ready |
+| V5–V6 | `pytest -m "d1a or d1b"` (mocks) | Green; then `cert-mark-contract` / `cert-mark-fault` |
+| V7 | `AUTOTRADE_D1B_REAL=1` + `run-lifecycles --count 50` | `cert-status` lifecycle_count ≥ 50 |
+| V8 | `run-soak --hours 72` (no `soak-abort`) | soak_passed; `valid=true` after promote |
+| V9 | `enable-demo` | status mode=DEMO |
+| Matrix | Fill Evidence below with versions / paths | D1b exit row complete |
+
+**Evidence pack paths (Owner fills after V7/V8):**
+
+- DB: `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3` (`certification_records`, `lifecycle_evidence`, `soak_runs`)
+- Optional log dump under `evidence/` (gitignored) — never paste API keys
 
 ## Evidence → matrix
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from autotrade.core.adapters.paper import PaperAdapter
+from autotrade.core.adapters.protocol import BrokerAdapter
 from autotrade.core.domain.money import d
 from autotrade.core.ledger.fills import ingest_fill
 from autotrade.core.ledger.positions import upsert_position_local
@@ -18,7 +18,7 @@ from autotrade.persistence.uow import UnitOfWork
 def reconcile(
     *,
     uow: UnitOfWork,
-    adapter: PaperAdapter,
+    adapter: BrokerAdapter,
     gate: AccountGate,
     ks: KillSwitch,
     account_id: str,

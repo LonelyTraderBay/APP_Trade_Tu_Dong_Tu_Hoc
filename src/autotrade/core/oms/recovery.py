@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from autotrade.core.adapters.paper import PaperAdapter
+from autotrade.core.adapters.protocol import BrokerAdapter
 from autotrade.core.oms.account_state import AccountGate, AccountStatus
 from autotrade.core.risk.kill_switch import KillSwitch
 from autotrade.persistence.uow import UnitOfWork
@@ -20,7 +20,7 @@ class RecoveryResult:
 def run_startup_recovery(
     *,
     uow: UnitOfWork,
-    adapter: PaperAdapter,
+    adapter: BrokerAdapter,
     gate: AccountGate,
     ks: KillSwitch,
     auth_ok: bool = True,

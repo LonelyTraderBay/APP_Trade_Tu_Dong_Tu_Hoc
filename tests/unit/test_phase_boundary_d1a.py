@@ -17,9 +17,11 @@ def test_phase_boundary_d1a() -> None:
         assert not (root / name).exists()
         assert not (root / "core" / name).exists()
 
-    # No ccxt import anywhere under src
+    # No ccxt import outside certified DEMO adapter package (D1b)
     offenders = []
     for py in root.rglob("*.py"):
+        if "adapters" in py.parts and "ccxt_demo" in py.parts:
+            continue
         text = py.read_text(encoding="utf-8")
         if "import ccxt" in text or "from ccxt" in text:
             offenders.append(str(py))

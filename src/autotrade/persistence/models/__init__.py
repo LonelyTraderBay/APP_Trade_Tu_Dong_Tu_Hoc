@@ -55,6 +55,7 @@ class Account(Base):
     external_id: Mapped[str | None] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="NEW")
     eligibility: Mapped[str] = mapped_column(String(32), nullable=False, default="INELIGIBLE")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class AccountSecretsRef(Base):
@@ -277,3 +278,54 @@ class TelegramUpdate(Base):
     update_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(256))
+
+
+class CertificationRecord(Base):
+    """D1b certification evidence for the locked DEMO allowlist tuple."""
+
+    __tablename__ = "certification_records"
+
+    cert_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tuple_key: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    app_version: Mapped[str | None] = mapped_column(String(64))
+    ccxt_version: Mapped[str | None] = mapped_column(String(64))
+    endpoint_fingerprint: Mapped[str | None] = mapped_column(String(128))
+    instrument_metadata_hash: Mapped[str | None] = mapped_column(String(128))
+    capability_snapshot_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    contract_suite_passed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fault_suite_passed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lifecycle_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lifecycle_passed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    soak_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    soak_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    soak_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    invalidated_reason: Mapped[str | None] = mapped_column(String(256))
+
+
+class LifecycleEvidence(Base):
+    """Real-testnet completed round-trip lifecycle events (count toward ≥50)."""
+
+    __tablename__ = "lifecycle_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="real_testnet")
+    entry_intent_id: Mapped[str | None] = mapped_column(String(64))
+    exit_intent_id: Mapped[str | None] = mapped_column(String(64))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(256))
+
+
+class SoakRun(Base):
+    """Wall-clock DEMO soak window metadata."""
+
+    __tablename__ = "soak_runs"
+
+    soak_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    unresolved_recon_at_end: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

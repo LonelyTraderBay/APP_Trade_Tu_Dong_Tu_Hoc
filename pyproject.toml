@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "autotrade"
 version = "0.1.0a0"
-description = "AutoTrade AI Desktop Solo — D1a Paper core"
+description = "AutoTrade AI Desktop Solo — D1b CCXT DEMO + D1a Paper core"
 readme = "AGENTS.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
   "keyring>=25,<26",
   "python-telegram-bot>=21,<23",
   "argon2-cffi>=25.1.0",
+  "ccxt>=4.4,<5",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,7 @@ pythonpath = ["src"]
 addopts = "-q"
 markers = [
   "d1a: D1a exit / fault / integration suites",
+  "d1b: D1b DEMO allowlist / contract / fault / evidence suites",
 ]
 
 [tool.ruff]

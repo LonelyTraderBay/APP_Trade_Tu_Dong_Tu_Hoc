@@ -1,4 +1,4 @@
-"""Headless trading entrypoint (D1a).
+"""Headless trading entrypoint (D1a Paper + D1b DEMO CLI).
 
 No localhost HTTP listener — in-process composition only (ADR-D13).
 """
@@ -7,20 +7,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import sys
+from typing import Any
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run headless entry; optional --smoke-runtime exercises OMS queue stub."""
+    """Run headless entry; D1b DEMO ops + D1a smoke hooks."""
     parser = argparse.ArgumentParser(
         prog="autotrade-headless",
-        description="AutoTrade AI headless entry (D1a Paper core)",
+        description="AutoTrade AI headless entry (D1a Paper + D1b DEMO)",
     )
-    parser.add_argument(
-        "--version",
-        action="store_true",
-        help="Print package version and exit",
-    )
+    parser.add_argument("--version", action="store_true", help="Print package version and exit")
     parser.add_argument(
         "--smoke-runtime",
         action="store_true",
@@ -31,6 +29,41 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Send Owner Telegram test message via FakeTelegramSender (dev hook)",
     )
+
+    sub = parser.add_subparsers(dest="cmd")
+
+    p_store = sub.add_parser("demo-store-creds", help="Store DEMO API key/secret in OS keyring")
+    p_store.add_argument("--account-id", default="demo-binance")
+
+    sub.add_parser("demo-test-connection", help="Probe Binance Spot Testnet (requires creds)")
+    p_en = sub.add_parser("enable-demo", help="Enable DEMO account (requires valid certification)")
+    p_en.add_argument("--account-id", default="demo-binance")
+    sub.add_parser("disable-demo", help="Deactivate DEMO trading READY")
+    p_sw = sub.add_parser("switch-account", help="Switch active account paper|demo")
+    p_sw.add_argument("target", choices=["paper", "demo"])
+    sub.add_parser("status", help="Print active mode / cert validity (secrets redacted)")
+
+    sub.add_parser("cert-mark-contract", help="Mark DEMO contract suite passed")
+    sub.add_parser("cert-mark-fault", help="Mark DEMO fault suite passed")
+    sub.add_parser("cert-status", help="Print certification gates (redacted)")
+    p_life = sub.add_parser(
+        "run-lifecycles",
+        help="Run DEMO round-trip lifecycles (requires AUTOTRADE_D1B_REAL=1)",
+    )
+    p_life.add_argument("--count", type=int, default=None, help="Round-trips (default 50 or env)")
+    p_life.add_argument("--account-id", default="demo-binance")
+    p_soak = sub.add_parser(
+        "run-soak",
+        help="Run DEMO continuous soak (requires AUTOTRADE_D1B_REAL=1)",
+    )
+    p_soak.add_argument("--hours", type=float, default=72.0)
+    p_soak.add_argument("--heartbeat-seconds", type=float, default=300.0)
+    p_soak.add_argument("--account-id", default="demo-binance")
+    sub.add_parser("soak-status", help="Print active/latest soak run")
+    p_abort = sub.add_parser("soak-abort", help="Owner-pause active soak (fails continuous gate)")
+    p_abort.add_argument("--soak-id", default=None)
+    p_abort.add_argument("--account-id", default="demo-binance")
+
     args = parser.parse_args(argv)
 
     if args.version:
@@ -52,11 +85,360 @@ def main(argv: list[str] | None = None) -> int:
         print(transport.send_test_message())
         return 0
 
+    if args.cmd == "demo-store-creds":
+        return _demo_store_creds(args.account_id)
+    if args.cmd == "demo-test-connection":
+        return _demo_test_connection()
+    if args.cmd == "enable-demo":
+        return _enable_demo(args.account_id)
+    if args.cmd == "disable-demo":
+        return _disable_demo()
+    if args.cmd == "switch-account":
+        return _switch_account(args.target)
+    if args.cmd == "status":
+        return _status()
+    if args.cmd == "cert-mark-contract":
+        return _cert_mark("contract")
+    if args.cmd == "cert-mark-fault":
+        return _cert_mark("fault")
+    if args.cmd == "cert-status":
+        return _cert_status()
+    if args.cmd == "run-lifecycles":
+        return _run_lifecycles(account_id=args.account_id, count=args.count)
+    if args.cmd == "run-soak":
+        return _run_soak(
+            account_id=args.account_id,
+            hours=args.hours,
+            heartbeat_seconds=args.heartbeat_seconds,
+        )
+    if args.cmd == "soak-status":
+        return _soak_status()
+    if args.cmd == "soak-abort":
+        return _soak_abort(account_id=args.account_id, soak_id=args.soak_id)
+
     print(
         "autotrade-headless: ready (no HTTP). "
-        "Use --smoke-runtime / --test-telegram for hooks.",
+        "Use demo-* / cert-* / run-lifecycles / run-soak / switch-account / status.",
         file=sys.stderr,
     )
+    return 0
+
+
+def _uow():
+    from autotrade.persistence.engine import create_sqlite_engine
+    from autotrade.persistence.uow import UnitOfWork
+
+    return UnitOfWork(create_sqlite_engine())
+
+
+def _demo_store_creds(account_id: str) -> int:
+    from autotrade.persistence.models import Account, AccountSecretsRef
+    from autotrade.persistence.secrets import SecretRef, store_secret
+
+    api_key = getpass.getpass("DEMO API key: ")
+    api_secret = getpass.getpass("DEMO API secret: ")
+    service = "AutoTradeAI"
+    user_key = f"{account_id}:api_key"
+    user_secret = f"{account_id}:api_secret"
+    store_secret(SecretRef(service, user_key), api_key)
+    store_secret(SecretRef(service, user_secret), api_secret)
+    with _uow().session() as session:
+        acc = session.get(Account, account_id)
+        if acc is None:
+            acc = Account(
+                account_id=account_id,
+                adapter_id="ccxt",
+                mode="DEMO",
+                endpoint="binance_spot_testnet",
+                status="NEW",
+                eligibility="INELIGIBLE",
+                is_active=False,
+            )
+            session.add(acc)
+        session.merge(
+            AccountSecretsRef(
+                account_id=account_id,
+                keyring_service=service,
+                keyring_user=user_key,
+            )
+        )
+    print("stored (keyring refs only; secrets redacted)")
+    return 0
+
+
+def _load_demo_creds(account_id: str = "demo-binance") -> tuple[str, str]:
+    from autotrade.persistence.secrets import SecretRef, load_secret
+
+    service = "AutoTradeAI"
+    key = load_secret(SecretRef(service, f"{account_id}:api_key"))
+    secret = load_secret(SecretRef(service, f"{account_id}:api_secret"))
+    if not key or not secret:
+        raise RuntimeError("missing DEMO credentials in keyring")
+    return key, secret
+
+
+def _demo_test_connection() -> int:
+    # Prefer fake when no real env — still validates allowlist/sandbox path
+    import os
+
+    from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter, FakeCcxtExchange
+    from autotrade.core.domain.redaction import redact_mapping
+
+    if os.environ.get("AUTOTRADE_D1B_REAL") == "1":
+        key, secret = _load_demo_creds()
+        adapter = CcxtDemoAdapter(api_key=key, api_secret=secret, endpoint="binance_spot_testnet")
+    else:
+        adapter = CcxtDemoAdapter(exchange=FakeCcxtExchange(), endpoint="binance_spot_testnet")
+    adapter.connect()
+    caps = adapter.get_capabilities()
+    print(redact_mapping(caps))
+    return 0
+
+
+def _enable_demo(account_id: str) -> int:
+    from autotrade.core.accounts.active import switch_active_account
+    from autotrade.core.accounts.bindings import bind_demo_strategy
+    from autotrade.core.certify.records import CertificationNotValid, assert_cert_valid_for_trading
+    from autotrade.core.oms.account_state import AccountStatus
+    from autotrade.persistence.models import Account
+
+    with _uow().session() as session:
+        try:
+            assert_cert_valid_for_trading(session)
+        except CertificationNotValid as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return 2
+        acc = session.get(Account, account_id)
+        if acc is None:
+            acc = Account(
+                account_id=account_id,
+                adapter_id="ccxt",
+                mode="DEMO",
+                endpoint="binance_spot_testnet",
+                status=AccountStatus.READY.value,
+                eligibility="DEMO_CERTIFIED",
+                is_active=False,
+            )
+            session.add(acc)
+        else:
+            acc.mode = "DEMO"
+            acc.adapter_id = "ccxt"
+            acc.status = AccountStatus.READY.value
+            acc.eligibility = "DEMO_CERTIFIED"
+        bind_demo_strategy(session, account_id=account_id)
+        switch_active_account(session, target_account_id=account_id, position_qty=0.0)
+    print(f"DEMO enabled account={account_id} mode=DEMO")
+    return 0
+
+
+def _disable_demo() -> int:
+    from autotrade.persistence.models import Account
+
+    with _uow().session() as session:
+        for acc in session.query(Account).filter_by(mode="DEMO").all():
+            acc.status = "SAFE_LOCK"
+            acc.is_active = False
+            session.add(acc)
+    print("DEMO disabled")
+    return 0
+
+
+def _switch_account(target: str) -> int:
+    from autotrade.core.accounts.active import SwitchRejected, switch_active_account
+    from autotrade.persistence.models import Account
+
+    with _uow().session() as session:
+        if target == "paper":
+            acc = session.query(Account).filter_by(mode="PAPER").first()
+            if acc is None:
+                acc = Account(
+                    account_id="paper1",
+                    adapter_id="paper",
+                    mode="PAPER",
+                    status="READY",
+                    eligibility="PAPER",
+                    is_active=False,
+                )
+                session.add(acc)
+                session.flush()
+        else:
+            acc = session.query(Account).filter_by(mode="DEMO").first()
+            if acc is None:
+                print("no DEMO account — run demo-store-creds / enable-demo", file=sys.stderr)
+                return 2
+        try:
+            switch_active_account(session, target_account_id=acc.account_id, position_qty=0.0)
+        except SwitchRejected as exc:
+            print(f"switch refused: {exc}", file=sys.stderr)
+            return 2
+    print(f"active={target} mode={acc.mode}")
+    return 0
+
+
+def _status() -> int:
+    from autotrade.core.accounts.active import get_active_account
+    from autotrade.core.certify.records import get_cert
+    from autotrade.core.domain.redaction import redact_mapping
+    from autotrade.core.notify.compose import compose_message
+
+    with _uow().session() as session:
+        active = get_active_account(session)
+        cert = get_cert(session)
+        mode = active.mode if active else "NONE"
+        account_id = active.account_id if active else "none"
+        payload: dict[str, Any] = {
+            "mode": mode,
+            "account_id": account_id,
+            "cert_valid": bool(cert.valid) if cert else False,
+            "lifecycle_count": cert.lifecycle_count if cert else 0,
+            "api_key": "***",
+        }
+        print(compose_message(body="status", mode=mode, account_id=account_id, extra=payload))
+        print(redact_mapping(payload))
+    return 0
+
+
+def _cert_mark(kind: str) -> int:
+    from autotrade.core.certify import records as cert_records
+
+    with _uow().session() as session:
+        if kind == "contract":
+            row = cert_records.mark_contract_passed(session)
+        else:
+            row = cert_records.mark_fault_passed(session)
+        print(
+            f"cert-{kind}-marked tuple={row.tuple_key} "
+            f"contract={row.contract_suite_passed_at is not None} "
+            f"fault={row.fault_suite_passed_at is not None}"
+        )
+    return 0
+
+
+def _cert_status() -> int:
+    from autotrade.core.certify.records import LIFECYCLE_GATE, get_cert
+    from autotrade.core.domain.redaction import redact_mapping
+
+    with _uow().session() as session:
+        cert = get_cert(session)
+        if cert is None:
+            print("cert=none valid=False")
+            return 0
+        payload = {
+            "tuple_key": cert.tuple_key,
+            "valid": bool(cert.valid),
+            "lifecycle_count": int(cert.lifecycle_count or 0),
+            "lifecycle_gate": LIFECYCLE_GATE,
+            "soak_passed": bool(cert.soak_passed),
+            "contract_passed": cert.contract_suite_passed_at is not None,
+            "fault_passed": cert.fault_suite_passed_at is not None,
+            "invalidated_reason": cert.invalidated_reason,
+            "api_key": "***",
+        }
+        print(redact_mapping(payload))
+    return 0
+
+
+def _run_lifecycles(*, account_id: str, count: int | None) -> int:
+    from autotrade.core.certify.real_lifecycles import (
+        build_real_adapter,
+        lifecycle_count_from_env,
+        require_real_env,
+        run_round_trip_lifecycles,
+    )
+
+    try:
+        require_real_env()
+        adapter = build_real_adapter(account_id=account_id)
+        adapter.connect()
+        n = count if count is not None else lifecycle_count_from_env(50)
+        result = run_round_trip_lifecycles(
+            uow=_uow(),
+            adapter=adapter,
+            account_id=account_id,
+            count=n,
+            source="real_testnet",
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"run-lifecycles failed: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"lifecycles completed={result.completed}/{result.requested} "
+        f"total_real={result.total_real_count} errors={result.errors}"
+    )
+    return 0 if result.completed == result.requested and not result.errors else 1
+
+
+def _run_soak(*, account_id: str, hours: float, heartbeat_seconds: float) -> int:
+    from autotrade.core.certify.real_lifecycles import build_real_adapter, require_real_env
+    from autotrade.core.certify.real_soak import run_soak
+    from autotrade.core.certify.soak import SOAK_REQUIRED
+
+    write_cert = hours >= (SOAK_REQUIRED.total_seconds() / 3600.0)
+    try:
+        require_real_env()
+        adapter = build_real_adapter(account_id=account_id)
+        adapter.connect()
+        result = run_soak(
+            uow=_uow(),
+            adapter=adapter,
+            account_id=account_id,
+            hours=hours,
+            heartbeat_seconds=heartbeat_seconds,
+            write_cert=write_cert,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"run-soak failed: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"soak id={result.soak_id} passed={result.passed} "
+        f"elapsed={result.elapsed} unresolved={result.unresolved_recon} "
+        f"msg={result.message} write_cert={write_cert}"
+    )
+    return 0 if result.passed else 1
+
+
+def _soak_status() -> int:
+    from autotrade.core.domain.redaction import redact_mapping
+    from autotrade.persistence.models import SoakRun
+
+    with _uow().session() as session:
+        row = session.query(SoakRun).order_by(SoakRun.started_at.desc()).first()
+        if row is None:
+            print("soak=none")
+            return 0
+        print(
+            redact_mapping(
+                {
+                    "soak_id": row.soak_id,
+                    "account_id": row.account_id,
+                    "started_at": str(row.started_at),
+                    "ended_at": str(row.ended_at) if row.ended_at else None,
+                    "owner_paused": bool(row.owner_paused),
+                    "passed": bool(row.passed),
+                    "unresolved_recon_at_end": row.unresolved_recon_at_end,
+                }
+            )
+        )
+    return 0
+
+
+def _soak_abort(*, account_id: str, soak_id: str | None) -> int:
+    from autotrade.core.certify.real_soak import abort_soak, get_active_soak
+
+    uow = _uow()
+    sid = soak_id
+    if sid is None:
+        active = get_active_soak(uow, account_id)
+        if active is None:
+            print("no active soak", file=sys.stderr)
+            return 2
+        sid = active.soak_id
+    try:
+        row = abort_soak(uow, sid)
+    except KeyError:
+        print(f"soak not found: {sid}", file=sys.stderr)
+        return 2
+    print(f"soak-aborted id={row.soak_id} owner_paused=True passed=False")
     return 0
 
 

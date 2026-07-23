@@ -30,7 +30,7 @@ AutoTradeAI/
 **/autotrade.sqlite3-*
 
 # Evidence / reports (fill matrix from CI artifacts; keep local)
-evidence/
+/evidence/
 reports/
 *.evidence.json
 pytest-report.xml

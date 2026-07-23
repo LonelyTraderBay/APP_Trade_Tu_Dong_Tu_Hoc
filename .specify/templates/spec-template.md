@@ -125,7 +125,10 @@
   chosen when the feature description did not specify certain details.
 -->
 
-- [Assumption about target users, e.g., "Users have stable internet connectivity"]
-- [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
-- [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
-- [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+- Target user is a single Owner on Windows desktop (no SaaS / multi-tenant / app login).
+- Feature scope is limited to the **active architecture phase** (D1a/D1b/D1c/D1.1/D3/D4);
+  out-of-phase work (e.g. ML in D1, LIVE without D1.1 gate, CCXT before D0-11) is excluded.
+- Normative constraints come from `Kien-truc-App-Desktop-Solo-v1.4.md`; Enterprise docs
+  are advisory only if they conflict.
+- [Assumption about data/environment, e.g., "Paper symbols suffice until D0-11"]
+- [Dependency on existing system/service only if in-phase, e.g., "Uses Paper adapter"]

@@ -40,7 +40,21 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Derived from `.specify/memory/constitution.md` (v1.1.0+) and
+`Kien-truc-App-Desktop-Solo-v1.4.md` (absolute source of truth; Enterprise advisory only):
+
+- [ ] Plan scope maps to **one** active phase: D1a → D1b (post D0-11) → D1c → D1.1 LIVE
+      (separate gate) → D3 Backtest → D4 AI — no skipping or merging gates
+- [ ] D1 work excludes scikit-learn / sqlite-vec / FAISS / `ai_*` schema and CCXT trading
+      before D0-11; D1a is Paper + internal symbols only
+- [ ] Invariants preserved: one trading process; no localhost HTTP API; Risk reservation +
+      durable intent commit before network; `UNKNOWN` → query/recon (no blind retry);
+      broker = exposure truth; SQLite = intent/FSM/audit/outbox; secrets via keyring only
+- [ ] D1 strategy default `rule_sma_cross_v1` unless mục 16 records otherwise; features
+      carry `feature_schema_version`; signals use closed candles only
+- [ ] Adapter/AI access via ports + contract tests; no exchange/ML hard-coding in
+      Strategy/Risk/OMS; AI (D4) MUST NOT call OMS or auto-promote LIVE
+- [ ] Evidence plan named (unit/FSM → contract → fault matrix §18 / capability matrix)
 
 ## Project Structure
 

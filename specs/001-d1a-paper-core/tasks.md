@@ -111,27 +111,27 @@ description: "Task list for D1a Paper Core implementation"
 
 ### T5 — OMS + ledger + durable submit + UNKNOWN + protection
 
-- [ ] T034 [US3] Implement order intent FSM + delivery-certainty axis (`NOT_SENT`/`SENDING`/`CONFIRMED`/`MAY_HAVE_BEEN_ACCEPTED`) in `src/autotrade/core/oms/fsm.py`
-- [ ] T035 [US3] Implement durable submit protocol (single txn: intent+reservation+audit[+outbox iff event] then SUBMITTING; assert rows land in `order_intents`/`risk_reservations`/`risk_checks`/`audit_events`) in `src/autotrade/core/oms/submit.py`
-- [ ] T036 [US3] Implement `order_protection` lifecycle (attach/update qty on fills; failure → Paper flatten/lock path) in `src/autotrade/core/oms/protection.py`
-- [ ] T037 [US3] Implement UNKNOWN path (hold reservation; query by client_id; **MUST NOT** re-place/blind-retry the order) in `src/autotrade/core/oms/unknown.py`
-- [ ] T038 [US3] Implement fill ledger (idempotent `(account_id, broker_execution_id)`) in `src/autotrade/core/ledger/fills.py`
-- [ ] T039 [P] [US3] Implement positions_local derived view + provenance in `src/autotrade/core/ledger/positions.py`
-- [ ] T040 [P] [US3] Add unit/FSM tests for transitions and CAS guards in `tests/unit/test_oms_fsm.py`
-- [ ] T041 [P] [US3] Add unit tests for protection qty sync / failure escalation in `tests/unit/test_order_protection.py`
-- [ ] T042 [US3] Add integration test durable submit + Paper fill path (also asserts `signals`/`balances_snapshots`/`execution_cursors` written when exercised) in `tests/integration/test_durable_submit.py`
-- [ ] T043 [US3] Add fault test mandatory commit-fail → no adapter call in `tests/fault/test_commit_fail_no_send.py`
-- [ ] T044 [US3] Add fault test **crash before intent commit** → no broker request, no orphan reservation in `tests/fault/test_crash_before_commit.py`
-- [ ] T045 [US3] Add fault test **crash after commit before/during send** → delivery `NOT_SENT` vs uncertain; uncertain queries, no blind order retry in `tests/fault/test_crash_after_commit.py`
-- [ ] T046 [US3] Add fault test timeout → UNKNOWN / `MAY_HAVE_BEEN_ACCEPTED`, reservation held, zero duplicate exposure, no blind order retry in `tests/fault/test_timeout_unknown.py`
+- [x] T034 [US3] Implement order intent FSM + delivery-certainty axis (`NOT_SENT`/`SENDING`/`CONFIRMED`/`MAY_HAVE_BEEN_ACCEPTED`) in `src/autotrade/core/oms/fsm.py`
+- [x] T035 [US3] Implement durable submit protocol (single txn: intent+reservation+audit[+outbox iff event] then SUBMITTING; assert rows land in `order_intents`/`risk_reservations`/`risk_checks`/`audit_events`) in `src/autotrade/core/oms/submit.py`
+- [x] T036 [US3] Implement `order_protection` lifecycle (attach/update qty on fills; failure → Paper flatten/lock path) in `src/autotrade/core/oms/protection.py`
+- [x] T037 [US3] Implement UNKNOWN path (hold reservation; query by client_id; **MUST NOT** re-place/blind-retry the order) in `src/autotrade/core/oms/unknown.py`
+- [x] T038 [US3] Implement fill ledger (idempotent `(account_id, broker_execution_id)`) in `src/autotrade/core/ledger/fills.py`
+- [x] T039 [P] [US3] Implement positions_local derived view + provenance in `src/autotrade/core/ledger/positions.py`
+- [x] T040 [P] [US3] Add unit/FSM tests for transitions and CAS guards in `tests/unit/test_oms_fsm.py`
+- [x] T041 [P] [US3] Add unit tests for protection qty sync / failure escalation in `tests/unit/test_order_protection.py`
+- [x] T042 [US3] Add integration test durable submit + Paper fill path (also asserts `signals`/`balances_snapshots`/`execution_cursors` written when exercised) in `tests/integration/test_durable_submit.py`
+- [x] T043 [US3] Add fault test mandatory commit-fail → no adapter call in `tests/fault/test_commit_fail_no_send.py`
+- [x] T044 [US3] Add fault test **crash before intent commit** → no broker request, no orphan reservation in `tests/fault/test_crash_before_commit.py`
+- [x] T045 [US3] Add fault test **crash after commit before/during send** → delivery `NOT_SENT` vs uncertain; uncertain queries, no blind order retry in `tests/fault/test_crash_after_commit.py`
+- [x] T046 [US3] Add fault test timeout → UNKNOWN / `MAY_HAVE_BEEN_ACCEPTED`, reservation held, zero duplicate exposure, no blind order retry in `tests/fault/test_timeout_unknown.py`
 
 ### T6 — Recovery / recon
 
-- [ ] T047 [US3] Implement Startup Recovery checklist (§11.2 steps 1–10) for Paper in `src/autotrade/core/oms/recovery.py`
-- [ ] T048 [US3] Implement continuous recon + execution cursor overlap/dedup in `src/autotrade/core/ledger/recon.py`
-- [ ] T049 [US3] Persist/handle `recon_breaks` and SAFE_LOCK / not-READY gates in `src/autotrade/core/oms/account_state.py`
-- [ ] T050 [US3] Add fault tests for incomplete recovery (auth fail, incomplete pagination, missing data → locked, KS not lowered) in `tests/fault/test_startup_recovery.py`
-- [ ] T051 [P] [US3] Add fault tests for orphan/missed fill recon convergence (broker wins exposure; history intact; L2) in `tests/fault/test_recon_orphans.py`
+- [x] T047 [US3] Implement Startup Recovery checklist (§11.2 steps 1–10) for Paper in `src/autotrade/core/oms/recovery.py`
+- [x] T048 [US3] Implement continuous recon + execution cursor overlap/dedup in `src/autotrade/core/ledger/recon.py`
+- [x] T049 [US3] Persist/handle `recon_breaks` and SAFE_LOCK / not-READY gates in `src/autotrade/core/oms/account_state.py`
+- [x] T050 [US3] Add fault tests for incomplete recovery (auth fail, incomplete pagination, missing data → locked, KS not lowered) in `tests/fault/test_startup_recovery.py`
+- [x] T051 [P] [US3] Add fault tests for orphan/missed fill recon convergence (broker wins exposure; history intact; L2) in `tests/fault/test_recon_orphans.py`
 
 **Checkpoint**: US3 — crash/UNKNOWN/recovery/protection invariants hold for Paper
 
@@ -143,17 +143,17 @@ description: "Task list for D1a Paper Core implementation"
 **Independent Test**: Test message OK; wrong chat rejected; update_id dedup; TTL 60s; digest fields; dead-letter on permanent 4xx; mode on all outbound  
 **Maps**: Spec US4 · contracts/telegram-notify.md
 
-- [ ] T052 [US4] Implement notify outbox repository (**delivery** retry/backoff/dead_letter — not OMS order retry) in `src/autotrade/core/notify/outbox.py`
-- [ ] T053 [US4] Implement Telegram transport via python-telegram-bot + keyring token in `src/autotrade/core/notify/telegram_transport.py`
-- [ ] T054 [US4] Implement Owner **test-message** (G5.1) send path in `src/autotrade/core/notify/telegram_transport.py` and wire from headless/settings hook in `src/autotrade/entrypoints/headless.py`
-- [ ] T055 [US4] Implement inbound command handler (`/status|/pnl|/pause`, update_id dedup, 60s TTL, wrong chat/user reject+audit) in `src/autotrade/core/notify/commands.py`
-- [ ] T056 [US4] Ensure `/pause` maps to KS L1 only (no remote resume/flatten/unlock) in `src/autotrade/core/notify/commands.py` and `src/autotrade/core/risk/kill_switch.py`
-- [ ] T057 [US4] Implement message composer with mode+account tags and redaction in `src/autotrade/core/notify/compose.py`
-- [ ] T058 [US4] Implement daily digest job (P&L, order counts, drawdown, KS, adapter health, as-of time; Owner local day) in `src/autotrade/core/notify/digest.py`
-- [ ] T059 [P] [US4] Add unit tests for commands/TTL/dedup/allowlist in `tests/unit/test_telegram_commands.py`
-- [ ] T060 [P] [US4] Add unit tests for digest payload fields + mode tags in `tests/unit/test_telegram_digest.py`
-- [ ] T061 [US4] Add integration tests for test-message, outbox restart replay, **delivery** transient retry, permanent-4xx dead-letter (source events retained) in `tests/integration/test_telegram_outbox.py`
-- [ ] T062 [P] [US4] Add redaction scan test (no secrets in payloads/fixtures) in `tests/unit/test_secret_redaction.py`
+- [x] T052 [US4] Implement notify outbox repository (**delivery** retry/backoff/dead_letter — not OMS order retry) in `src/autotrade/core/notify/outbox.py`
+- [x] T053 [US4] Implement Telegram transport via python-telegram-bot + keyring token in `src/autotrade/core/notify/telegram_transport.py`
+- [x] T054 [US4] Implement Owner **test-message** (G5.1) send path in `src/autotrade/core/notify/telegram_transport.py` and wire from headless/settings hook in `src/autotrade/entrypoints/headless.py`
+- [x] T055 [US4] Implement inbound command handler (`/status|/pnl|/pause`, update_id dedup, 60s TTL, wrong chat/user reject+audit) in `src/autotrade/core/notify/commands.py`
+- [x] T056 [US4] Ensure `/pause` maps to KS L1 only (no remote resume/flatten/unlock) in `src/autotrade/core/notify/commands.py` and `src/autotrade/core/risk/kill_switch.py`
+- [x] T057 [US4] Implement message composer with mode+account tags and redaction in `src/autotrade/core/notify/compose.py`
+- [x] T058 [US4] Implement daily digest job (P&L, order counts, drawdown, KS, adapter health, as-of time; Owner local day) in `src/autotrade/core/notify/digest.py`
+- [x] T059 [P] [US4] Add unit tests for commands/TTL/dedup/allowlist in `tests/unit/test_telegram_commands.py`
+- [x] T060 [P] [US4] Add unit tests for digest payload fields + mode tags in `tests/unit/test_telegram_digest.py`
+- [x] T061 [US4] Add integration tests for test-message, outbox restart replay, **delivery** transient retry, permanent-4xx dead-letter (source events retained) in `tests/integration/test_telegram_outbox.py`
+- [x] T062 [P] [US4] Add redaction scan test (no secrets in payloads/fixtures) in `tests/unit/test_secret_redaction.py`
 
 **Checkpoint**: US4 — Telegram safety (G5.1–G5.5) independently verifiable
 
@@ -167,19 +167,19 @@ description: "Task list for D1a Paper Core implementation"
 **§18.2 D1a required (must have named tests):** crash-before-commit; crash-after-commit; timeout UNKNOWN; partial+protection; cancel+late; dup/out-of-order; auth/disconnect (Paper injectable); stale; disk/SAFE_LOCK; KS restart; Telegram 429/4xx; sleep/clock jump; orphan recon.  
 **Deferred (not D1a tasks):** real exchange rate-limit soak (D1b); §18.2 AI/D4 rows; LIVE protection-only rows (D1.1).
 
-- [ ] T063 Add full-path integration Strategy→Risk→OMS→Paper→ledger→outbox in `tests/integration/test_strategy_risk_oms_paper.py`
-- [ ] T064 [P] Add seeded Paper replay determinism test (bit-for-bit fills/balances) in `tests/integration/test_paper_replay_seed.py`
-- [ ] T065 [P] Add fault test partial fill during protection create/update → qty sync or L3/lock in `tests/fault/test_partial_fill_protection.py`
-- [ ] T066 [P] Add fault test cancel timeout + late fill → `CANCEL_UNKNOWN`, single fill ingest in `tests/fault/test_cancel_unknown_late_fill.py`
-- [ ] T067 [P] Add fault test duplicate/out-of-order executions → unique fill, no state regression in `tests/fault/test_dup_out_of_order_fills.py`
-- [ ] T068 [P] Add fault test Paper auth/disconnect injection → no new exposure-increasing entry; recon lane prioritized in `tests/fault/test_disconnect_no_entry.py`
-- [ ] T069 [P] Add fault test stale quote/account/instrument → no exposure increase + notify stale correctly in `tests/fault/test_stale_fail_closed.py`
-- [ ] T070 [P] Add fault test disk full/DB busy/corrupt/migration fail → SAFE_LOCK, no new submit in `tests/fault/test_disk_safe_lock.py`
-- [ ] T071 [P] Add fault test sleep/resume or wall-clock jump → refresh + recovery subset before trade in `tests/fault/test_clock_jump_recovery.py`
-- [ ] T072 Add pytest marker `d1a` on all D1a fault/integration exit tests + evidence report hook (versions/seed/config/results) in `tests/conftest.py`
-- [ ] T073 Document Evidence cell fill instructions for D1a rows in `docs/mvp-capability-matrix.md` (leave Evidence blank until runs produce artifacts)
-- [ ] T074 Run `ruff check src tests` and `pytest -m d1a` (unit/contract/integration/fault marked d1a); store report under gitignored evidence path
-- [ ] T075 Verify LIVE hard-disabled and no CCXT/UI/AI modules added (boundary assert only) in `tests/unit/test_phase_boundary_d1a.py`
+- [x] T063 Add full-path integration Strategy→Risk→OMS→Paper→ledger→outbox in `tests/integration/test_strategy_risk_oms_paper.py`
+- [x] T064 [P] Add seeded Paper replay determinism test (bit-for-bit fills/balances) in `tests/integration/test_paper_replay_seed.py`
+- [x] T065 [P] Add fault test partial fill during protection create/update → qty sync or L3/lock in `tests/fault/test_partial_fill_protection.py`
+- [x] T066 [P] Add fault test cancel timeout + late fill → `CANCEL_UNKNOWN`, single fill ingest in `tests/fault/test_cancel_unknown_late_fill.py`
+- [x] T067 [P] Add fault test duplicate/out-of-order executions → unique fill, no state regression in `tests/fault/test_dup_out_of_order_fills.py`
+- [x] T068 [P] Add fault test Paper auth/disconnect injection → no new exposure-increasing entry; recon lane prioritized in `tests/fault/test_disconnect_no_entry.py`
+- [x] T069 [P] Add fault test stale quote/account/instrument → no exposure increase + notify stale correctly in `tests/fault/test_stale_fail_closed.py`
+- [x] T070 [P] Add fault test disk full/DB busy/corrupt/migration fail → SAFE_LOCK, no new submit in `tests/fault/test_disk_safe_lock.py`
+- [x] T071 [P] Add fault test sleep/resume or wall-clock jump → refresh + recovery subset before trade in `tests/fault/test_clock_jump_recovery.py`
+- [x] T072 Add pytest marker `d1a` on all D1a fault/integration exit tests + evidence report hook (versions/seed/config/results) in `tests/conftest.py`
+- [x] T073 Document Evidence cell fill instructions for D1a rows in `docs/mvp-capability-matrix.md` (leave Evidence blank until runs produce artifacts)
+- [x] T074 Run `ruff check src tests` and `pytest -m d1a` (unit/contract/integration/fault marked d1a); store report under gitignored evidence path
+- [x] T075 Verify LIVE hard-disabled and no CCXT/UI/AI modules added (boundary assert only) in `tests/unit/test_phase_boundary_d1a.py`
 
 **Checkpoint**: D1a exit criteria met for Paper core
 

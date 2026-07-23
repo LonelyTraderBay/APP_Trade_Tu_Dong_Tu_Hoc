@@ -26,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Start Runtime OMS command-owner queue, echo one command, exit",
     )
+    parser.add_argument(
+        "--test-telegram",
+        action="store_true",
+        help="Send Owner Telegram test message via FakeTelegramSender (dev hook)",
+    )
     args = parser.parse_args(argv)
 
     if args.version:
@@ -37,8 +42,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.smoke_runtime:
         return asyncio.run(_smoke_runtime())
 
+    if args.test_telegram:
+        from autotrade.core.notify.telegram_transport import (
+            FakeTelegramSender,
+            TelegramTransport,
+        )
+
+        transport = TelegramTransport(sender=FakeTelegramSender(), chat_id="local-dev")
+        print(transport.send_test_message())
+        return 0
+
     print(
-        "autotrade-headless: ready (no HTTP). Use --smoke-runtime to exercise queue.",
+        "autotrade-headless: ready (no HTTP). "
+        "Use --smoke-runtime / --test-telegram for hooks.",
         file=sys.stderr,
     )
     return 0

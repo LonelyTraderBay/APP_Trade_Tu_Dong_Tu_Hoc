@@ -93,11 +93,11 @@ description: "Task list for D1a Paper Core implementation"
 **Independent Test**: Rejected risk never sends; L2/L3/L4 survive restart without auto-downgrade  
 **Maps**: Spec US2
 
-- [ ] T029 [US2] Implement risk check + atomic reservation service in `src/autotrade/core/risk/engine.py`
-- [ ] T030 [US2] Implement reduce-only / no-position-flip safety validator in `src/autotrade/core/risk/validators.py`
-- [ ] T031 [US2] Implement KS L1–L4 state machine with DB persistence in `src/autotrade/core/risk/kill_switch.py`
-- [ ] T032 [P] [US2] Add unit tests for reservation math, reject paths, KS scope/persist in `tests/unit/test_risk_and_ks.py`
-- [ ] T033 [US2] Add restart persistence test (KS not auto-lowered) in `tests/fault/test_ks_persist_restart.py`
+- [x] T029 [US2] Implement risk check + atomic reservation service in `src/autotrade/core/risk/engine.py`
+- [x] T030 [US2] Implement reduce-only / no-position-flip safety validator in `src/autotrade/core/risk/validators.py`
+- [x] T031 [US2] Implement KS L1–L4 state machine with DB persistence in `src/autotrade/core/risk/kill_switch.py`
+- [x] T032 [P] [US2] Add unit tests for reservation math, reject paths, KS scope/persist in `tests/unit/test_risk_and_ks.py`
+- [x] T033 [US2] Add restart persistence test (KS not auto-lowered) in `tests/fault/test_ks_persist_restart.py`
 
 **Checkpoint**: US2 — risk/KS independently verifiable
 

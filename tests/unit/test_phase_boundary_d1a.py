@@ -12,7 +12,8 @@ from autotrade.core.adapters.manifest import PAPER_MANIFEST
 @pytest.mark.d1a
 def test_phase_boundary_d1a() -> None:
     root = Path("src/autotrade")
-    forbidden_dirs = ["app_ui", "ai", "backtest", "plugins", "api"]
+    # app_ui/ is D1c (optional stub allowed); still forbid AI/backtest/HTTP API scaffolds in D1
+    forbidden_dirs = ["ai", "backtest", "plugins", "api"]
     for name in forbidden_dirs:
         assert not (root / name).exists()
         assert not (root / "core" / name).exists()

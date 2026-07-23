@@ -25,3 +25,13 @@
 1. PIN unlock UX cho Settings vs Pause luôn available từ tray?
 2. Có bắt buộc Telegram config trong first-run wizard D1c không?
 3. PyInstaller one-file vs one-folder (v1.4 nghiêng one-folder ops)?
+
+## Clarify locked 2026-07-23 (Owner-default = v1.4)
+
+| Q | Decision | Source |
+|---|---|---|
+| PIN vs Pause | Pause / Flatten / tray Pause **không** bị PIN lockout; Settings (secret) + resume/nới risk **cần PIN** | v1.4 §09 KS + PIN |
+| Telegram first-run | **Không bắt buộc** Telegram khi first launch; cấu hình trong Settings | D1a headless đã đủ; UX tối giản |
+| Packaging | PyInstaller **one-folder** Windows x64 | v1.4 D1c ops / backup-restore |
+
+Tasks và implement UI trading E2E vẫn **chờ** D1b `certification_records.valid=true` (sau V8 soak).

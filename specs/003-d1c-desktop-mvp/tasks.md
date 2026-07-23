@@ -1,0 +1,96 @@
+---
+description: "Task list for D1c Desktop MVP (PySide6 + installer)"
+---
+
+# Tasks: D1c Desktop MVP
+
+**Input**: [plan.md](./plan.md), [spec.md](./spec.md), [data-model.md](./data-model.md), [research.md](./research.md), [contracts/](./contracts/), [WORKPLAN-NOW.md](./WORKPLAN-NOW.md)
+
+**Phase guard**: D1c only — PySide6 UI + PyInstaller ops. No LIVE, no multi-exchange, no AI/Backtest UI, no FastAPI. UI MUST NOT bypass Risk/OMS/cert gates.
+
+**Clarify locked** (2026-07-23): Pause without PIN; Telegram optional at first-run; one-folder installer — see [research.md](./research.md).
+
+**Implement gate (hard)**:
+- Docs/stub tasks (T001–T010) MAY proceed while D1b soak runs.
+- UI trading E2E / Enable DEMO from UI / packaged DEMO (T020+) **WAIT** until D1b `certification_records.valid=true` after V8 ≥72h.
+
+## Format: `[ID] [P?] [Story?] Description`
+
+---
+
+## Phase 0: Docs complete (this PR)
+
+- [x] T000 Lock clarify Q1–Q3 in research.md + WORKPLAN-NOW.md
+- [x] T000a Write data-model.md + contracts (ui-core-boundary, packaged-ops, screens)
+- [x] T000b Write this tasks.md + update checklist
+
+---
+
+## Phase 1: Setup — UI extra + skeleton (safe during soak)
+
+**Independent Test**: `import autotrade` without PySide6 still works; `pytest -m "d1a or d1b"` green
+
+- [x] T001 Add optional-dependencies `ui = ["PySide6>=6.7,<7"]` in `pyproject.toml` (do not put PySide6 in main deps)
+- [x] T002 [P] Add pytest marker `d1c` in `pyproject.toml` + `tests/conftest.py`
+- [x] T003 [P] Create `src/autotrade/app_ui/` package with `__init__.py` docstring “D1c only; no trading mutations here”
+- [x] T004 [P] Add `src/autotrade/entrypoints/desktop.py` stub that refuses to start if ui extra missing (clear error)
+- [x] T005 [P] Unit test: `core`/`oms`/`risk`/`strategy` modules do not import PySide6 (`tests/unit/test_ui_import_boundaries.py`)
+- [x] T006 Update `AGENTS.md` phase D1c row pointer to `specs/003-d1c-desktop-mvp/`
+
+**Checkpoint**: Stub merges without requiring Qt installed in default CI
+
+---
+
+## Phase 2: Foundational UI shell (after T001–T006; still no DEMO E2E gate)
+
+- [ ] T010 Implement MainWindow + navigation shell (empty pages) in `app_ui/`
+- [ ] T011 [P] Tray stub: show/hide main; Quit; Pause hook wired to KillSwitch API (unit with fake KS)
+- [ ] T012 Single-instance guard helper (QLocalServer or win mutex) + unit test on Windows
+- [ ] T013 [P] Read-only DashboardSnapshot builder from existing UoW (no Qt) in `app_ui/services/` or `core` projection module
+- [ ] T014 Wire desktop entrypoint to show MainWindow when `[ui]` installed
+
+**Checkpoint**: App opens empty shell on Owner machine with `pip install .[ui]`
+
+---
+
+## Phase 3: User stories (WAIT: D1b valid=true for DEMO paths)
+
+### US1 — Install & launch [P1]
+
+- [ ] T020 PyInstaller one-folder spec + build script under `packaging/`
+- [ ] T021 [P] Packaged smoke: launch + single-instance (`tests/packaged/`)
+- [ ] T022 Clean-machine checklist doc in quickstart.md
+
+### US2 — Broker Hub [P1] (cert gate)
+
+- [ ] T030 Broker Hub views: Paper/DEMO, Test connection, capability redacted
+- [ ] T031 Enable DEMO calls same assert as headless; refuse if invalid cert
+- [ ] T032 Switch account UI fail-closed (flat/recon/UNKNOWN)
+- [ ] T033 Integration tests marker `d1c` with Fake adapter (no REAL required)
+
+### US3 — KS + Live Monitor [P2]
+
+- [ ] T040 KS panel L1–L4 + Pause without PIN
+- [ ] T041 Live Monitor table includes UNKNOWN; no blind-retry button
+- [ ] T042 Flatten confirm dialog → core flatten path
+
+### US4 — Strategy / History / Settings [P3]
+
+- [ ] T050 Strategy view read-only hard ceilings
+- [ ] T051 History filter + CSV export redacted
+- [ ] T052 Settings: PIN change, optional Telegram, allowlist read-only, backup trigger
+- [ ] T053 Autostart option (Windows) documented
+
+---
+
+## Phase 4: Ops soak D1c (≥14d) — after MVP UI
+
+- [ ] T060 Operational soak runbook (≥14d) separate from D1b 72h
+- [ ] T061 Fill matrix G6 / ADR-D13 packaged Evidence
+
+---
+
+## Parallel notes
+
+- T001–T006 are the only code tasks intended **during** D1b V8 soak.
+- Do not start second `run-soak` on Owner machine.

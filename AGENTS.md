@@ -17,7 +17,7 @@ Enterprise blueprint (nếu có) chỉ tham khảo; **không** ghi đè v1.4.
 | **D0** | Chỉ tài liệu / gate Owner | Không scaffold trading app “cho vui” |
 | **D1a** | Domain, SQLite ADR-D03.1, Paper, Risk, OMS, Recovery, Telegram | CCXT thật, UI đầy đủ, ML, `ai_*`, backtest UI |
 | **D1b** | Một CCXT DEMO allowlist — tuple mục 16: `binance` + spot + Binance Spot Testnet + `BTC/USDT` + `15m` (D0-11 **xong**) | Multi-exchange, LIVE; không bỏ qua DEMO/certification để “cắm LIVE ngay” |
-| **D1c** | PySide6 MVP + installer | AI Center, Backtest UI |
+| **D1c** | PySide6 MVP + installer — Spec Kit `specs/003-d1c-desktop-mvp/` | AI Center, Backtest UI |
 | **D3** | Backtest/replay deterministic | Train ML |
 | **D4** | AI Module + Learning Store + sidecar | Auto-promote LIVE; AI gọi OMS |
 

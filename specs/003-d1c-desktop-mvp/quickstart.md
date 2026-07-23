@@ -13,7 +13,12 @@ specs/003-d1c-desktop-mvp/plan.md
 ## Later (sau D1b exit)
 
 ```text
-# sau /speckit-tasks + implement
+# stub (không cần Qt)
+autotrade-desktop
+# → exit 2 + hướng dẫn pip install -e ".[ui]" nếu thiếu PySide6
+
+# sau /speckit-implement MainWindow + D1b valid
+pip install -e ".[ui]"
 pytest -m "d1a or d1b"   # regression
 pytest -m d1c            # UI/packaged khi có
 ```

@@ -17,31 +17,30 @@ def invalidate_on_change(
     current_app: str | None = None,
 ) -> None:
     row = cert_records.ensure_cert_row(session)
-    changed = False
+    detected: list[str] = []
     if current_ccxt and row.ccxt_version and current_ccxt != row.ccxt_version:
-        changed = True
-        reason = reason or "ccxt_version_changed"
+        detected.append("ccxt_version_changed")
     if (
         current_endpoint_fp
         and row.endpoint_fingerprint
         and current_endpoint_fp != row.endpoint_fingerprint
     ):
-        changed = True
-        reason = "endpoint_fingerprint_changed"
+        detected.append("endpoint_fingerprint_changed")
     if (
         current_instrument_hash
         and row.instrument_metadata_hash
         and current_instrument_hash != row.instrument_metadata_hash
     ):
-        changed = True
-        reason = "instrument_metadata_changed"
+        detected.append("instrument_metadata_changed")
     if current_app and row.app_version and current_app != row.app_version:
-        changed = True
-        reason = "app_version_changed"
-    if changed or reason:
+        detected.append("app_version_changed")
+
+    parts = ([reason] if reason else []) + detected
+    recorded = "+".join(parts)
+    if detected or reason:
         cert_records.invalidate(
             session,
-            reason=reason,
+            reason=recorded,
             ccxt_version=current_ccxt,
             endpoint_fingerprint=current_endpoint_fp,
             instrument_metadata_hash=current_instrument_hash,

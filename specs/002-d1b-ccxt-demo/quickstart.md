@@ -18,7 +18,11 @@
 
 - Runtime DB: `%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`
 - Dev override: `data/` (gitignore)
-- Apply Alembic through D1b migration (`0002_…`)
+- Apply Alembic through D1b migration (`0002_…`) before first `cert-mark-*` / REAL runners on the runtime DB:
+
+```powershell
+python -c "from pathlib import Path; from alembic.config import Config; from alembic import command; c=Config('src/autotrade/persistence/alembic.ini'); c.set_main_option('script_location','src/autotrade/persistence/alembic'); command.upgrade(c,'head')"
+```
 
 ## Validation scenarios
 

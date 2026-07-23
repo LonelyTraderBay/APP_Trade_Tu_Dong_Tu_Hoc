@@ -28,12 +28,12 @@ description: "Task list for D1a Paper Core implementation"
 **Purpose**: Pin one CPython minor + hashed lockfile; Windows smoke before trading code  
 **Independent Test**: `ruff check` + `pytest --collect-only` on allowlisted imports; ADR-D01 evidence note in matrix
 
-- [ ] T001 Create package skeleton dirs `src/autotrade/{entrypoints,core/{domain,adapters,market,features,strategy,risk,oms,ledger,notify},persistence}` and `tests/{unit,contract,integration,fault}` per plan §13
-- [ ] T002 Add `pyproject.toml` with closed CPython range candidate `>=3.14,<3.15`, D1a deps only (SQLAlchemy 2.x, Alembic, keyring, python-telegram-bot, pytest, ruff) and package `src/autotrade`
-- [ ] T003 Generate hashed lockfile (e.g. `uv.lock` or `requirements.txt` with hashes) for D1a allowlist; exclude CCXT/PySide6/scikit-learn/sqlite-vec/FAISS
-- [ ] T004 [P] Add `.gitignore` entries for `data/`, `.venv/`, `%LOCALAPPDATA%` mirrors, pytest/ruff caches, and evidence reports
-- [ ] T005 [P] Add minimal `src/autotrade/__init__.py` and headless stub `src/autotrade/entrypoints/headless.py` (no HTTP listener)
-- [ ] T006 Run Windows smoke: create venv, install lockfile, import allowlisted packages, `ruff check src tests`, `pytest --collect-only`; if 3.14.x fails document fallback 3.13/3.12 in `specs/001-d1a-paper-core/plan.md` and `docs/mvp-capability-matrix.md` ADR-D01 Evidence **before** later phases
+- [x] T001 Create package skeleton dirs `src/autotrade/{entrypoints,core/{domain,adapters,market,features,strategy,risk,oms,ledger,notify},persistence}` and `tests/{unit,contract,integration,fault}` per plan §13
+- [x] T002 Add `pyproject.toml` with closed CPython range candidate `>=3.14,<3.15`, D1a deps only (SQLAlchemy 2.x, Alembic, keyring, python-telegram-bot, pytest, ruff) and package `src/autotrade`
+- [x] T003 Generate hashed lockfile (e.g. `uv.lock` or `requirements.txt` with hashes) for D1a allowlist; exclude CCXT/PySide6/scikit-learn/sqlite-vec/FAISS
+- [x] T004 [P] Add `.gitignore` entries for `data/`, `.venv/`, `%LOCALAPPDATA%` mirrors, pytest/ruff caches, and evidence reports
+- [x] T005 [P] Add minimal `src/autotrade/__init__.py` and headless stub `src/autotrade/entrypoints/headless.py` (no HTTP listener)
+- [x] T006 Run Windows smoke: create venv, install lockfile, import allowlisted packages, `ruff check src tests`, `pytest --collect-only`; if 3.14.x fails document fallback 3.13/3.12 in `specs/001-d1a-paper-core/plan.md` and `docs/mvp-capability-matrix.md` ADR-D01 Evidence **before** later phases
 
 **Checkpoint**: D1a-00 green — trading modules may begin
 

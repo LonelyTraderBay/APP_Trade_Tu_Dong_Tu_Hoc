@@ -152,6 +152,13 @@ All tables listed in `data-model.md` must exist before D1a exit; **no** `ai_*`.
 2. Smoke on clean Windows: import/runtime for allowlisted deps; ruff; pytest collect empty/smoke.
 3. If 3.14.x fails → document fallback minor in this plan addendum + `docs/mvp-capability-matrix.md` ADR-D01 row **before** trading PRs merge.
 
+### D1a-00 evidence (2026-07-23)
+
+- **Pinned**: CPython 3.14.4 (`.python-version` + `requires-python = ">=3.14,<3.15"`).
+- **Lock**: `uv.lock` SHA256 `A9AA587170281CDB7A7206E5D4B8FBF6E36A99B065478A786A793E1F2D3F53E5`.
+- **Smoke**: allowlisted imports OK; `ruff check src tests` PASS; `pytest --collect-only` (no tests yet); headless `--version` OK.
+- **Fallback**: not activated.
+
 ## Later phases (not planned here)
 
 - **D1b**: one CCXT DEMO after D0-11 — later

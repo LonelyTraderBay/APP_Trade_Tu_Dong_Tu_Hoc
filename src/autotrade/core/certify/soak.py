@@ -14,6 +14,13 @@ from autotrade.persistence.models import SoakRun
 SOAK_REQUIRED = timedelta(hours=72)
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """SQLite/SQLAlchemy often returns naive UTC; comparisons need aware UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
 @dataclass
 class SoakController:
     session: Session
@@ -57,17 +64,18 @@ class SoakController:
         run = self.session.get(SoakRun, soak_id)
         if run is None:
             raise KeyError(soak_id)
-        end = now or datetime.now(UTC)
+        end = _as_utc(now or datetime.now(UTC))
         run.ended_at = end
         run.unresolved_recon_at_end = unresolved_recon
         if run.owner_paused:
             run.passed = False
         else:
-            duration = end - run.started_at
+            started = _as_utc(run.started_at)
+            duration = end - started
             run.passed = duration >= SOAK_REQUIRED and unresolved_recon == 0
             if run.passed:
                 cert_records.mark_soak_passed(
-                    self.session, started_at=run.started_at, ended_at=end
+                    self.session, started_at=started, ended_at=end
                 )
         self.session.add(run)
         return run

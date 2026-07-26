@@ -23,7 +23,7 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G1.1 | Broker Adapter Interface; không hard-code sàn trong Strategy/Risk/OMS | D1a/D1b | contract adapter; review import boundaries | 2026-07-23 mock + REAL V7: `BrokerAdapter` protocol; OMS/Risk/Strategy không import `ccxt`; Spot exposure via balance (hotfix #8). Lifecycle real_testnet count=`52`. Soak V8 IN_PROGRESS — bổ sung khi `valid=true` |
+| G1.1 | Broker Adapter Interface; không hard-code sàn trong Strategy/Risk/OMS | D1a/D1b | contract adapter; review import boundaries | 2026-07-23 mock + REAL V7/V8: `BrokerAdapter` protocol; OMS/Risk/Strategy không import `ccxt`; Spot exposure via balance (hotfix #8). Lifecycle=`52`; soak=`soak_cb50ba457b9d9a1b` ≥72h passed; `cert.valid=true`; DEMO enabled `demo-binance` |
 | G1.2 | Wizard tự kết nối | D1c | E2E UI Paper + DEMO | |
 | G1.3 | Chỉ tuple đã chứng nhận | D1b | allowlist negative test | 2026-07-23 `pytest -m d1b` — `test_allowlist_*`, `test_phase_boundary_d1b` PASS (`binance`/spot/testnet/`BTC/USDT`/`15m`) |
 | G1.4 | Chuẩn hoá symbol/margin/exposure | D1a | unit instrument + risk projection | |
@@ -78,7 +78,7 @@ Không có evidence = chưa pass gate.
 | ADR-D03 / D03.1 | SQLite WAL + bảng trading tối thiểu | D1a | migration + atomic intent txn | 2026-07-23: Alembic `0001_adr_d03_1`; `tests/unit/test_schema_adr_d03_1.py` PASS — đủ bảng ADR-D03.1, không `ai_*` |
 | ADR-D04 | Outbox durable; queue wake-only | D1a | restart replay outbox | 2026-07-23 `test_telegram_outbox_retry_and_dead_letter` |
 | ADR-D06 | keyring only | D1a | no secret in sqlite/log fixtures | 2026-07-23 `test_secret_redaction_in_notify_payloads` |
-| ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | 2026-07-23 harness mock PASS. **REAL:** app=`0.1.0a0`; ccxt=`4.5.68`; tuple=`binance`/`spot`/`binance_spot_testnet`/`BTC/USDT`/`15m`; lifecycle≥50=`52` (V7 2026-07-23); soak≥72h=`IN_PROGRESS soak_cb50ba457b9d9a1b`; cert.valid=`false` until V8; evidence=`%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`. Hotfix Spot #8: no futures `fetch_positions`; vision+demo-api markers. |
+| ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | 2026-07-23 harness + **REAL V8 DONE** 2026-07-26: app=`0.1.0a0`; ccxt=`4.5.68`; tuple=`binance`/`spot`/`binance_spot_testnet`/`BTC/USDT`/`15m`; lifecycle=`52`; soak=`soak_cb50ba457b9d9a1b` start=`2026-07-23 07:53:35Z` end=`2026-07-26 16:42:09Z` passed; cert.valid=`true`; DEMO=`demo-binance` READY; DB=`%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`. Note: runner crashed at finalize (naive/aware datetime); orphan finalize after wall≥72h + recon=0 — fix `_as_utc` in `soak.py`. Hotfix Spot #8 retained. |
 | ADR-D11 | PIN Argon2id + lockout | D1a | unit PIN + audit | 2026-07-23 `test_pin_verifier` |
 | ADR-D12 | Monotonic timeouts; clock skew | D1a | clock fault tests | 2026-07-23 `test_clock_jump_recovery` |
 | ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | 2026-07-23 headless stub + boundary (packaged E2E → D1c) |
@@ -100,7 +100,7 @@ Mỗi hàng fault D1 (không gồm hàng D4) phải có evidence trước exit D
 |---|---|---|
 | D0 | Mục 20 ký; mục 16 OK; **D0-11 xong** (`binance`/spot/testnet/`BTC/USDT`/`15m`) | D0-01…05, 07…11; D0-06 Owner ToS trước credential DEMO |
 | D1a | Fault + Paper FSM (symbol nội bộ) | G3, G4.1, G5, ADR-D03.1, fault D1 |
-| D1b | D0-11 + D1a merged + DEMO lifecycle ≥50 + soak ≥72h | G1, ADR-D09, E2E DEMO — **code/harness:** `pytest -m "d1a or d1b"` PASS (REAL evidence skip unless `AUTOTRADE_D1B_REAL=1`). **Exit 100%:** Owner V7≥50 + V8≥72h + `certification_records.valid=true` — see `specs/002-d1b-ccxt-demo/quickstart.md` Owner runbook |
+| D1b | D0-11 + D1a merged + DEMO lifecycle ≥50 + soak ≥72h | G1, ADR-D09 — **EXIT 2026-07-26:** V7 lifecycle=`52`; V8 soak passed; `cert.valid=true`; `enable-demo` OK. Harness: `pytest -m "d1a or d1b"`. Runbook: `specs/002-d1b-ccxt-demo/OWNER-D1B-EXIT.md` |
 | D1c | Installer + UI MVP + soak ≥14d ops | G6, G7 UX, packaged |
 | D3 | Repeatable backtest; freeze feature/label | §07.4, §12.1 |
 | D4 | AI contract + Learning Store + promote drill | G4.2–G4.5, §12.3–12.4 |

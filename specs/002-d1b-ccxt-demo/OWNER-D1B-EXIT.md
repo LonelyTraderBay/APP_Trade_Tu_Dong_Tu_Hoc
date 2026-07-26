@@ -43,8 +43,9 @@ python -c "from pathlib import Path; from alembic.config import Config; from ale
 
 ## Sau khi soak passed (copy-paste)
 
+Từ **repo root** (không hard-code absolute path máy):
+
 ```powershell
-cd C:\Users\C-PC\Documents\APP_Trade_Tu_Dong_Tu_Hoc
 .\.venv\Scripts\Activate.ps1
 python -m autotrade.entrypoints.headless soak-status
 python -m autotrade.entrypoints.headless cert-status

@@ -75,3 +75,18 @@ def test_soak_controller_pass_wall_clock(migrated_uow) -> None:  # noqa: ANN001
         session.add(run)
         done = ctl.complete(run.soak_id, unresolved_recon=0)
         assert done.passed is True
+
+
+@pytest.mark.d1b
+def test_soak_controller_complete_naive_started_at(migrated_uow) -> None:  # noqa: ANN001
+    """SQLite may return naive UTC — complete must not TypeError (V8 orphan root cause)."""
+    with migrated_uow.session() as session:
+        ctl = SoakController(session=session, account_id="demo1")
+        run = ctl.start()
+        run.started_at = (datetime.now(UTC) - SOAK_REQUIRED - timedelta(minutes=1)).replace(
+            tzinfo=None
+        )
+        session.add(run)
+        done = ctl.complete(run.soak_id, unresolved_recon=0, now=datetime.now(UTC))
+        assert done.passed is True
+        assert done.ended_at is not None

@@ -20,17 +20,19 @@ Harness/CLI is ready on branch `002-d1b-ccxt-demo`. This file is the **Owner-onl
 
 ## V8 — ≥72h soak
 
-- [ ] Machine can stay up; avoid Owner pause (`soak-abort` fails the gate)
-- [ ] `autotrade-headless run-soak --hours 72 --heartbeat-seconds 300` — **STARTED** 2026-07-23 `soak_cb50ba457b9d9a1b` (do not start a second soak)
-- [ ] `autotrade-headless soak-status` → passed; recon unresolved = 0
-- [ ] `autotrade-headless cert-status` → `soak_passed=true`, `valid=true`
+- [x] Machine can stay up; avoid Owner pause (`soak-abort` fails the gate)
+- [x] `autotrade-headless run-soak --hours 72 --heartbeat-seconds 300` — `soak_cb50ba457b9d9a1b` started 2026-07-23 07:53:35Z
+  - Runner lived through 72h (DB mtime ~2026-07-26 14:53 VN) then crashed in `SoakController.complete` (naive vs aware datetime)
+  - Orphan finalize 2026-07-26: `scripts/finalize_orphan_soak.py` after `_as_utc` fix — **not** backdated `started_at`
+- [x] `autotrade-headless soak-status` → passed; recon unresolved = 0
+- [x] `autotrade-headless cert-status` → `soak_passed=true`, `valid=true`
 
 ## Enable + matrix
 
-- [ ] `autotrade-headless enable-demo --account-id demo-binance`
-- [ ] Fill Evidence in `docs/mvp-capability-matrix.md` (ADR-D09 + D1b exit): app version, ccxt version, dates, DB path — update soak≥72h + cert.valid when V8 ends
-- [ ] Do **not** commit API keys, PIN, Chat ID, or raw dumps with secrets
-- [ ] Rotate testnet API key if it was ever pasted into chat
+- [x] `autotrade-headless enable-demo --account-id demo-binance`
+- [x] Fill Evidence in `docs/mvp-capability-matrix.md` (ADR-D09 + D1b exit): app version, ccxt version, dates, DB path — soak≥72h + cert.valid
+- [x] Do **not** commit API keys, PIN, Chat ID, or raw dumps with secrets
+- [ ] **Rotate testnet API key** (was pasted into chat) — Owner action remaining
 
 ## Runtime DB bootstrap (trước cert-mark lần đầu)
 

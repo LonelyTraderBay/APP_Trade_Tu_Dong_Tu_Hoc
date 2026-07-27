@@ -36,10 +36,22 @@ class RiskEngine:
         qty: Decimal,
         price: Decimal,
         ks_level: int = 0,
+        reduce_only: bool = False,
     ) -> RiskDecision:
+        """Fail-closed risk check.
+
+        `reduce_only=True` (T042 Decision 2) is a narrow, explicit opt-in
+        used ONLY by the flatten/close path: it skips the
+        `"kill_switch_blocks_entry"` reason so a reduce-only close can
+        proceed while the kill-switch is elevated (L1+), per
+        `Kien-truc-App-Desktop-Solo-v1.4.md` L3 ("reduce-only flatten").
+        Every other check below (qty/notional limits) still applies
+        unchanged. Default is `False` — byte-identical behavior to before
+        this flag existed for every caller that omits it.
+        """
         check_id = self.ids.uuid4()
         reasons: list[str] = []
-        if ks_level >= 1:
+        if ks_level >= 1 and not reduce_only:
             reasons.append("kill_switch_blocks_entry")
         notional = qty * price
         if qty > self.limits.max_qty:

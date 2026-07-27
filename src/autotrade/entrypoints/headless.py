@@ -1,6 +1,22 @@
 """Headless trading entrypoint (D1a Paper + D1b DEMO CLI).
 
 No localhost HTTP listener — in-process composition only (ADR-D13).
+
+Single-instance (T015, Owner decision): headless shares the exact same
+``AutoTradeAI.Solo`` lock as the desktop entrypoint
+(``autotrade.app_ui.services.single_instance.SingleInstanceGuard``) — one
+shared lock enforces the v1.4 "one trading process" invariant across
+desktop + headless together, not just desktop-vs-desktop. Whichever process
+(desktop or headless) starts first holds it; the other refuses to start with
+a clear stderr message naming the owning PID when available. ``--version``
+is exempt — printing the version is not a trading action and must keep
+working even while another instance is running.
+
+Exit codes:
+  0  success
+  1  a run-lifecycles/run-soak invocation completed but failed its gate
+  2  operation refused (bad precondition, connection/cert failure, etc.)
+  3  another instance already holds the single-instance lock (EXIT_ALREADY_RUNNING)
 """
 
 from __future__ import annotations
@@ -10,6 +26,8 @@ import asyncio
 import getpass
 import sys
 from typing import Any
+
+EXIT_ALREADY_RUNNING = 3
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,61 +85,87 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.version:
+        # Printing the version is not a trading action — it must keep
+        # working even while another instance holds the lock, so this
+        # branch stays ahead of the guard on purpose.
         from autotrade import __version__
 
         print(__version__)
         return 0
 
-    if args.smoke_runtime:
-        return asyncio.run(_smoke_runtime())
-
-    if args.test_telegram:
-        from autotrade.core.notify.telegram_transport import (
-            FakeTelegramSender,
-            TelegramTransport,
-        )
-
-        transport = TelegramTransport(sender=FakeTelegramSender(), chat_id="local-dev")
-        print(transport.send_test_message())
-        return 0
-
-    if args.cmd == "demo-store-creds":
-        return _demo_store_creds(args.account_id)
-    if args.cmd == "demo-test-connection":
-        return _demo_test_connection()
-    if args.cmd == "enable-demo":
-        return _enable_demo(args.account_id)
-    if args.cmd == "disable-demo":
-        return _disable_demo()
-    if args.cmd == "switch-account":
-        return _switch_account(args.target)
-    if args.cmd == "status":
-        return _status()
-    if args.cmd == "cert-mark-contract":
-        return _cert_mark("contract")
-    if args.cmd == "cert-mark-fault":
-        return _cert_mark("fault")
-    if args.cmd == "cert-status":
-        return _cert_status()
-    if args.cmd == "run-lifecycles":
-        return _run_lifecycles(account_id=args.account_id, count=args.count)
-    if args.cmd == "run-soak":
-        return _run_soak(
-            account_id=args.account_id,
-            hours=args.hours,
-            heartbeat_seconds=args.heartbeat_seconds,
-        )
-    if args.cmd == "soak-status":
-        return _soak_status()
-    if args.cmd == "soak-abort":
-        return _soak_abort(account_id=args.account_id, soak_id=args.soak_id)
-
-    print(
-        "autotrade-headless: ready (no HTTP). "
-        "Use demo-* / cert-* / run-lifecycles / run-soak / switch-account / status.",
-        file=sys.stderr,
+    # Guard the entire subcommand dispatch: whichever process (desktop or
+    # headless) gets here first holds the shared AutoTradeAI.Solo lock, the
+    # other refuses to start. Mirrors desktop.py's guard-before-anything-
+    # stateful placement.
+    from autotrade.app_ui.services.single_instance import (
+        SingleInstanceGuard,
+        read_owner_pid,
     )
-    return 0
+
+    guard = SingleInstanceGuard()
+    if not guard.acquire():
+        owner = read_owner_pid(guard.lock_path)
+        suffix = "" if owner is None else f" (pid {owner})"
+        print(
+            f"autotrade-headless: another AutoTrade AI instance is already "
+            f"running{suffix} — only one trading process may run at a time.",
+            file=sys.stderr,
+        )
+        return EXIT_ALREADY_RUNNING
+
+    try:
+        if args.smoke_runtime:
+            return asyncio.run(_smoke_runtime())
+
+        if args.test_telegram:
+            from autotrade.core.notify.telegram_transport import (
+                FakeTelegramSender,
+                TelegramTransport,
+            )
+
+            transport = TelegramTransport(sender=FakeTelegramSender(), chat_id="local-dev")
+            print(transport.send_test_message())
+            return 0
+
+        if args.cmd == "demo-store-creds":
+            return _demo_store_creds(args.account_id)
+        if args.cmd == "demo-test-connection":
+            return _demo_test_connection()
+        if args.cmd == "enable-demo":
+            return _enable_demo(args.account_id)
+        if args.cmd == "disable-demo":
+            return _disable_demo()
+        if args.cmd == "switch-account":
+            return _switch_account(args.target)
+        if args.cmd == "status":
+            return _status()
+        if args.cmd == "cert-mark-contract":
+            return _cert_mark("contract")
+        if args.cmd == "cert-mark-fault":
+            return _cert_mark("fault")
+        if args.cmd == "cert-status":
+            return _cert_status()
+        if args.cmd == "run-lifecycles":
+            return _run_lifecycles(account_id=args.account_id, count=args.count)
+        if args.cmd == "run-soak":
+            return _run_soak(
+                account_id=args.account_id,
+                hours=args.hours,
+                heartbeat_seconds=args.heartbeat_seconds,
+            )
+        if args.cmd == "soak-status":
+            return _soak_status()
+        if args.cmd == "soak-abort":
+            return _soak_abort(account_id=args.account_id, soak_id=args.soak_id)
+
+        print(
+            "autotrade-headless: ready (no HTTP). "
+            "Use demo-* / cert-* / run-lifecycles / run-soak / switch-account / status.",
+            file=sys.stderr,
+        )
+        return 0
+    finally:
+        guard.release()
 
 
 def _uow():
@@ -220,6 +264,10 @@ def _enable_demo(account_id: str) -> int:
                 is_active=False,
             )
             session.add(acc)
+            # This session has autoflush=False, so switch_active_account's
+            # session.get(Account, ...) below would not see a pending insert
+            # and would raise a spurious SwitchRejected("unknown account").
+            session.flush()
         else:
             acc.mode = "DEMO"
             acc.adapter_id = "ccxt"

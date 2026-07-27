@@ -32,7 +32,7 @@ Harness/CLI is ready on branch `002-d1b-ccxt-demo`. This file is the **Owner-onl
 - [x] `autotrade-headless enable-demo --account-id demo-binance`
 - [x] Fill Evidence in `docs/mvp-capability-matrix.md` (ADR-D09 + D1b exit): app version, ccxt version, dates, DB path — soak≥72h + cert.valid
 - [x] Do **not** commit API keys, PIN, Chat ID, or raw dumps with secrets
-- [ ] **Rotate testnet API key** (was pasted into chat) — Owner action remaining
+- [x] **Rotate testnet API key** (was pasted into chat) — Owner revoked old key, stored new key via `demo-store-creds` (2026-07-27); verified `AUTOTRADE_D1B_REAL=1 autotrade-headless demo-test-connection` → `connected: True`, full capability set returned
 
 ## Runtime DB bootstrap (trước cert-mark lần đầu)
 

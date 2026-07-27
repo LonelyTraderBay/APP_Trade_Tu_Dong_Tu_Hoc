@@ -471,3 +471,124 @@ def test_live_monitor_surfaces_unknown_first(migrated_uow: UnitOfWork) -> None:
     assert rows[1].needs_attention is False
     assert page.total == 2
     assert page.truncated == 0
+
+
+@pytest.mark.d1c
+def test_live_monitor_settled_rows_are_ordered_most_recent_first(
+    migrated_uow: UnitOfWork,
+) -> None:
+    """T041: settled rows order by `created_at` desc, not the random UUID.
+
+    `intent_id` is a random UUID, so inserting "oldest" first with an
+    alphabetically-later id proves the sort key really is `created_at`, not
+    an accidental match with insertion/id order.
+    """
+    with migrated_uow.session() as session:
+        _seed_account(session)
+        session.add(
+            OrderIntent(
+                intent_id="z-oldest",
+                client_order_id="c-oldest",
+                state=IntentState.FILLED.value,
+                account_id="paper1",
+                side="buy",
+                qty=d("1"),
+                symbol="BTC/USDT",
+                created_at=NOW - timedelta(hours=2),
+            )
+        )
+        session.add(
+            OrderIntent(
+                intent_id="a-newest",
+                client_order_id="c-newest",
+                state=IntentState.FILLED.value,
+                account_id="paper1",
+                side="sell",
+                qty=d("2"),
+                symbol="BTC/USDT",
+                created_at=NOW,
+            )
+        )
+        session.add(
+            OrderIntent(
+                intent_id="m-middle",
+                client_order_id="c-middle",
+                state=IntentState.FILLED.value,
+                account_id="paper1",
+                side="buy",
+                qty=d("3"),
+                symbol="BTC/USDT",
+                created_at=NOW - timedelta(hours=1),
+            )
+        )
+
+    with migrated_uow.session() as session:
+        page = build_live_monitor_page(session, account_id="paper1")
+
+    assert [r.intent_id for r in page.rows] == ["a-newest", "m-middle", "z-oldest"]
+    assert page.rows[0].created_at == NOW
+    assert page.rows[1].created_at == NOW - timedelta(hours=1)
+    assert page.rows[2].created_at == NOW - timedelta(hours=2)
+
+
+@pytest.mark.d1c
+def test_live_monitor_inflight_rows_are_also_ordered_most_recent_first(
+    migrated_uow: UnitOfWork,
+) -> None:
+    """In-flight rows are always all returned; recency ordering among them
+    is still more useful to the operator than random UUID order."""
+    with migrated_uow.session() as session:
+        _seed_account(session)
+        session.add(
+            OrderIntent(
+                intent_id="z-old-unknown",
+                client_order_id="c-old-unknown",
+                state=IntentState.UNKNOWN.value,
+                account_id="paper1",
+                side="buy",
+                qty=d("1"),
+                symbol="BTC/USDT",
+                created_at=NOW - timedelta(minutes=30),
+            )
+        )
+        session.add(
+            OrderIntent(
+                intent_id="a-new-unknown",
+                client_order_id="c-new-unknown",
+                state=IntentState.UNKNOWN.value,
+                account_id="paper1",
+                side="sell",
+                qty=d("1"),
+                symbol="BTC/USDT",
+                created_at=NOW,
+            )
+        )
+
+    with migrated_uow.session() as session:
+        page = build_live_monitor_page(session, account_id="paper1")
+
+    assert [r.intent_id for r in page.rows] == ["a-new-unknown", "z-old-unknown"]
+    assert page.inflight_total == 2
+
+
+@pytest.mark.d1c
+def test_live_monitor_row_created_at_is_populated(migrated_uow: UnitOfWork) -> None:
+    with migrated_uow.session() as session:
+        _seed_account(session)
+        session.add(
+            OrderIntent(
+                intent_id="i-ts",
+                client_order_id="c-ts",
+                state=IntentState.FILLED.value,
+                account_id="paper1",
+                side="buy",
+                qty=d("1"),
+                symbol="BTC/USDT",
+                created_at=NOW,
+            )
+        )
+
+    with migrated_uow.session() as session:
+        page = build_live_monitor_page(session, account_id="paper1")
+
+    assert page.rows[0].created_at == NOW

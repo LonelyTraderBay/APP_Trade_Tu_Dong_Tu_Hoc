@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
@@ -96,6 +97,10 @@ class DashboardSnapshot:
     pnl_day: Decimal | None
     ks_level: int
     ks_latched: bool
+    #: Raw `KillSwitch.triggers` payload (reason/level) when latched — the
+    #: Kill-switch screen (T040) surfaces this verbatim; `None` when never
+    #: triggered.
+    ks_triggers: dict[str, Any] | None
     recovery_status: str
     open_recon_count: int
     outbox_backlog: int
@@ -129,6 +134,7 @@ class LiveMonitorRow:
     symbol: str
     side: str
     qty: Decimal
+    created_at: datetime
 
     @property
     def needs_attention(self) -> bool:
@@ -336,6 +342,7 @@ def build_dashboard_snapshot(
         pnl_day=pnl_day,
         ks_level=ks.level,
         ks_latched=ks.latched,
+        ks_triggers=ks.triggers,
         recovery_status=recovery,
         open_recon_count=open_recon,
         outbox_backlog=count_outbox_backlog(session),
@@ -359,9 +366,9 @@ def build_live_monitor_page(
     in-flight rows to the top — so with more intents than the limit, the
     UNKNOWN rows an operator most needs to see were the ones dropped.
 
-    Note the settled rows are ordered by `intent_id`, which is a random UUID:
-    `order_intents` carries no timestamp, so "most recent first" is not
-    expressible yet. T041 needs a time column before it can page meaningfully.
+    Both settled and in-flight rows are ordered most-recent-first by
+    `created_at` (migration `0003_d1c_ks_intent_ts`), with `intent_id` as a
+    stable tiebreaker for rows sharing a timestamp.
     """
     if limit < 0:
         raise ValueError("limit must be >= 0")
@@ -374,7 +381,7 @@ def build_live_monitor_page(
     inflight = list(
         session.scalars(
             scoped(select(OrderIntent).where(OrderIntent.state.in_(INFLIGHT_INTENT_STATES)))
-            .order_by(OrderIntent.intent_id)
+            .order_by(OrderIntent.created_at.desc(), OrderIntent.intent_id)
         ).all()
     )
 
@@ -388,7 +395,7 @@ def build_live_monitor_page(
                         OrderIntent.state.not_in(INFLIGHT_INTENT_STATES)
                     )
                 )
-                .order_by(OrderIntent.intent_id)
+                .order_by(OrderIntent.created_at.desc(), OrderIntent.intent_id)
                 .limit(settled_slots)
             ).all()
         )
@@ -415,6 +422,7 @@ def build_live_monitor_page(
             symbol=i.symbol,
             side=i.side,
             qty=Decimal(str(i.qty)),
+            created_at=_as_utc(i.created_at),
         )
         for i in intents
     ]

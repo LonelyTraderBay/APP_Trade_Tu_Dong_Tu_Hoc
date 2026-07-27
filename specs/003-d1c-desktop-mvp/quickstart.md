@@ -45,3 +45,65 @@ Broker Hub / Enable DEMO từ UI / packaged smoke — T020+ trong `tasks.md`, ch
 ## Out of scope here
 
 LIVE, AI Center, Backtest UI, multi-exchange.
+
+## Clean-machine install checklist
+
+T020–T022. Verify a one-folder PyInstaller build on a machine that never had
+this repo's `.venv` on it.
+
+**Prerequisites**
+
+- Windows 11 x64.
+- No Python, no PySide6 needed — both are bundled in the one-folder output.
+- Nothing listens on a TCP port (ADR-D13); no firewall prompt expected.
+
+**Build** (on a dev machine with `.venv` + `packaging` extra)
+
+```text
+uv pip install --python .venv/Scripts/python.exe "pyinstaller>=6,<7"
+# hoặc: pip install -e ".[packaging]"
+.venv\Scripts\python.exe packaging\build.py          # → dist/AutoTradeAI/
+.venv\Scripts\python.exe packaging\build.py --out D:\ci\out   # tuỳ chỉnh output dir
+```
+
+Copy the whole `dist/AutoTradeAI/` folder to the clean machine (zip it, or
+robocopy) — everything it needs lives inside that folder.
+
+**First launch (clean machine)**
+
+```text
+AutoTradeAI\AutoTradeAI.exe --check   # smoke: prints banner, exit 0, no window
+AutoTradeAI\AutoTradeAI.exe           # opens empty MainWindow shell + tray (Phase 2 scope)
+```
+
+Expect on first real launch:
+
+- `%LOCALAPPDATA%\AutoTradeAI\` is created fresh (SQLite DB + WAL/SHM under
+  it — see `contracts/packaged-ops.md`).
+- Single-instance guard acquires the `AutoTradeAI.Solo` named mutex before
+  any window is built.
+- Empty nav shell (Dashboard/Broker Hub/Kill-Switch/… placeholders) + tray
+  icon; Pause in the tray works without a PIN.
+
+**Verify single-instance**
+
+```text
+AutoTradeAI\AutoTradeAI.exe            # instance #1 — leave it running
+AutoTradeAI\AutoTradeAI.exe --check    # instance #2, from a second terminal
+# → exit 3, stderr: "autotrade-desktop is already running ..."
+```
+
+Automated version of the same check: `tests/packaged/test_packaged_launch.py`
+(marker `d1c`; skips itself with a clear reason when
+`dist/AutoTradeAI/AutoTradeAI.exe` isn't present).
+
+**Uninstall / reinstall**
+
+Deleting the `dist/AutoTradeAI/` (or installed) folder removes the app only
+— it never touches `%LOCALAPPDATA%\AutoTradeAI\`. Before wiping that data
+dir, back it up per `contracts/packaged-ops.md`:
+
+- Backup = SQLite (+ WAL/SHM if present) + non-secret `ui_settings` only.
+- Restore refuses on an incompatible `schema_meta`.
+- Secrets are never restored in plaintext — re-enter them via the OS
+  keyring after reinstall.

@@ -49,6 +49,7 @@ Forbidden: `from PySide6` inside `core/`, `persistence/`, `strategy/`, `risk/`, 
 ## Single-instance & tray
 
 - OS mutex / QLocalServer name `AutoTradeAI.Solo` (exact string in tasks).
+- `autotrade-headless` (T015) acquires the same shared lock, not a second one — desktop and headless mutually exclude each other, enforcing v1.4 "one trading process" across both entrypoints.
 - Tray holds Pause → `KillSwitch.pause_l1` without PIN.
 
 ## Packaging artifacts (not DB)

@@ -49,6 +49,10 @@ class SubmitRequest:
     stop_price: Decimal | None = None
     emit_notify: bool = False
     signal_id: str | None = None
+    #: T042 Decision 2 — narrow opt-in for the flatten/close path only. Never
+    #: set by a normal buy/sell submission; default False is byte-identical
+    #: to pre-T042 behavior. See `RiskEngine.check_increase`.
+    reduce_only: bool = False
 
 
 @dataclass
@@ -84,6 +88,7 @@ class DurableSubmitter:
             qty=req.qty,
             price=req.price,
             ks_level=0 if self.gate.status == AccountStatus.READY else 1,
+            reduce_only=req.reduce_only,
         )
         if not decision.approved:
             with self.uow.session() as session:
@@ -295,6 +300,7 @@ class DurableSubmitter:
                 side=req.side,
                 qty=req.qty,
                 symbol=req.symbol,
+                created_at=now,
             )
         )
         session.add(

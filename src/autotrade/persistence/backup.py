@@ -16,13 +16,24 @@ def snapshot_database(src: Path, backup_dir: Path | None = None) -> Path:
     tmp = dest_dir / f"autotrade-{stamp}.sqlite3.tmp"
     final = dest_dir / f"autotrade-{stamp}.sqlite3"
 
-    with sqlite3.connect(src) as source, sqlite3.connect(tmp) as dest:
+    # NOTE: `sqlite3.Connection` used as a context manager only commits/rolls
+    # back the transaction on `__exit__` — it does NOT close the connection
+    # (a well-known stdlib gotcha). On Windows that leaves the temp file
+    # handle open, so the `tmp.replace(final)` below intermittently fails
+    # with `PermissionError: [WinError 32]`. Close both connections
+    # explicitly in `finally` before ever touching the filesystem again.
+    source = sqlite3.connect(src)
+    dest = sqlite3.connect(tmp)
+    try:
         source.backup(dest)
         row = dest.execute("PRAGMA integrity_check").fetchone()
-        if not row or row[0] != "ok":
-            dest.close()
-            tmp.unlink(missing_ok=True)
-            raise RuntimeError(f"integrity_check failed: {row}")
+    finally:
+        dest.close()
+        source.close()
+
+    if not row or row[0] != "ok":
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(f"integrity_check failed: {row}")
 
     tmp.replace(final)
     return final

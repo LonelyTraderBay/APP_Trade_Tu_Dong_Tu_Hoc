@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -164,6 +164,9 @@ class OrderIntent(Base):
     side: Mapped[str] = mapped_column(String(16), nullable=False)
     qty: Mapped[Any] = mapped_column(Numeric(24, 12), nullable=False)
     symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
 
 class Order(Base):
@@ -234,6 +237,7 @@ class ReconBreak(Base):
 
 class KillSwitchState(Base):
     __tablename__ = "kill_switch_state"
+    __table_args__ = (UniqueConstraint("scope", name="uq_kill_switch_scope"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     scope: Mapped[str] = mapped_column(String(64), nullable=False)

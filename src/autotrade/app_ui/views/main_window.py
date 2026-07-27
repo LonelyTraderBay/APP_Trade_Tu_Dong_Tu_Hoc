@@ -19,8 +19,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from autotrade.app_ui.controllers.broker_hub import BrokerHubController
+from autotrade.app_ui.controllers.history import HistoryController
+from autotrade.app_ui.controllers.live_monitor import LiveMonitorController
+from autotrade.app_ui.controllers.settings import SettingsController
+from autotrade.app_ui.controllers.strategy import StrategyController
 from autotrade.app_ui.controllers.tray import TrayController
 from autotrade.app_ui.services.screens import SCREENS, ScreenSpec
+from autotrade.app_ui.views.broker_hub_page import BrokerHubPage
+from autotrade.app_ui.views.history_page import HistoryPage
+from autotrade.app_ui.views.kill_switch_page import KillSwitchPage
+from autotrade.app_ui.views.live_monitor_page import LiveMonitorPage
+from autotrade.app_ui.views.settings_page import SettingsPage
+from autotrade.app_ui.views.strategy_page import StrategyPage
 
 WINDOW_TITLE = "AutoTrade AI — Desktop Solo"
 
@@ -85,7 +96,7 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(spec.title)
             item.setData(Qt.ItemDataRole.UserRole, spec.key)
             self.nav.addItem(item)
-            self.pages.addWidget(PlaceholderPage(spec))
+            self.pages.addWidget(self._build_page(spec))
 
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.setCurrentRow(0)
@@ -106,6 +117,40 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage("Shell only — trading screens land in Phase 3.")
         self.refresh_banner()
+
+    def _build_page(self, spec: ScreenSpec) -> QWidget:
+        """Real widget for implemented screens; `PlaceholderPage` otherwise.
+
+        `broker_hub` (T030) was the first screen to graduate; `kill_switch`
+        and `live_monitor` (T040/T041) follow the exact same pattern. All
+        three fall back to the placeholder when no `TrayController` was
+        supplied (e.g. the Qt-shell tests construct `MainWindow()` with no
+        session), since there is then no `UnitOfWork` to build a page
+        controller from.
+
+        `kill_switch` is handed `self._controller` directly (not a new
+        controller built from its `uow`) so its Pause button runs the exact
+        same `TrayController.pause()` the tray menu uses — one audit-event/
+        idempotency implementation, not two.
+
+        `strategy` (T050), `history` (T051) and `settings` (T052/T053)
+        follow the same "new controller from the shared `uow`" pattern as
+        `broker_hub`/`live_monitor` — none of them need to share mutable
+        state with the tray, unlike `kill_switch`.
+        """
+        if spec.key == "broker_hub" and self._controller is not None:
+            return BrokerHubPage(BrokerHubController(self._controller.uow))
+        if spec.key == "kill_switch" and self._controller is not None:
+            return KillSwitchPage(self._controller)
+        if spec.key == "live_monitor" and self._controller is not None:
+            return LiveMonitorPage(LiveMonitorController(self._controller.uow))
+        if spec.key == "strategy" and self._controller is not None:
+            return StrategyPage(StrategyController(self._controller.uow))
+        if spec.key == "history" and self._controller is not None:
+            return HistoryPage(HistoryController(self._controller.uow))
+        if spec.key == "settings" and self._controller is not None:
+            return SettingsPage(SettingsController(self._controller.uow))
+        return PlaceholderPage(spec)
 
     def current_screen_key(self) -> str:
         item = self.nav.currentItem()

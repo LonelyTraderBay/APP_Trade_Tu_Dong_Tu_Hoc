@@ -12,6 +12,7 @@ from autotrade.core.certify.lifecycle import count_real_lifecycles, record_compl
 from autotrade.core.domain.allowlist import D1B_ALLOWLIST, AllowlistViolation
 from autotrade.core.domain.money import d
 from autotrade.core.oms.account_state import AccountGate, AccountStatus
+from autotrade.core.oms.flatten import flatten_position, position_qty
 from autotrade.core.oms.submit import DurableSubmitter, SubmitRequest
 from autotrade.core.risk.engine import RiskEngine, RiskLimits
 from autotrade.persistence.uow import UnitOfWork
@@ -32,15 +33,8 @@ def require_real_env() -> None:
         raise RuntimeError(f"{REAL_ENV}=1 required for real DEMO lifecycle / soak runners")
 
 
-def _position_qty(adapter: BrokerAdapter, symbol: str) -> Decimal:
-    for p in adapter.get_positions():
-        if p.get("symbol") == symbol:
-            return d(str(p.get("qty") or "0"))
-    return d("0")
-
-
 def _flat(adapter: BrokerAdapter, symbol: str) -> bool:
-    return abs(_position_qty(adapter, symbol)) < d("1e-12")
+    return abs(position_qty(adapter, symbol)) < d("1e-12")
 
 
 def run_round_trip_lifecycles(
@@ -83,9 +77,11 @@ def run_round_trip_lifecycles(
     for i in range(count):
         if not _flat(adapter, symbol):
             # Attempt flatten before counting a new cycle
-            flat_err = _flatten(submitter, account_id=account_id, symbol=symbol, price=trade_price)
-            if flat_err or not _flat(adapter, symbol):
-                errors.append(f"cycle_{i}:not_flat_start:{flat_err}")
+            flat_result = flatten_position(
+                submitter, account_id=account_id, symbol=symbol, price=trade_price
+            )
+            if not flat_result.ok or not _flat(adapter, symbol):
+                errors.append(f"cycle_{i}:not_flat_start:{flat_result.error}")
                 break
 
         buy = submitter.submit(
@@ -159,31 +155,6 @@ def run_round_trip_lifecycles(
         total_real_count=total,
         errors=errors,
     )
-
-
-def _flatten(
-    submitter: DurableSubmitter,
-    *,
-    account_id: str,
-    symbol: str,
-    price: Decimal,
-) -> str | None:
-    qty = _position_qty(submitter.adapter, symbol)
-    if abs(qty) < d("1e-12"):
-        return None
-    side = "sell" if qty > 0 else "buy"
-    result = submitter.submit(
-        SubmitRequest(
-            account_id=account_id,
-            symbol=symbol,
-            side=side,
-            qty=abs(qty),
-            price=price,
-        )
-    )
-    if not result.ok:
-        return result.error or "flatten_failed"
-    return None
 
 
 def build_real_adapter(*, account_id: str = "demo-binance") -> CcxtDemoAdapter:

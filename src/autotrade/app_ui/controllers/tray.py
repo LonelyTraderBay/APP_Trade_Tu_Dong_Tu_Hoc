@@ -88,6 +88,12 @@ class TrayController:
         self._load_ks: KillSwitchLoader = kill_switch_loader or KillSwitch.load
         self._adapter_connected = adapter_connected or (lambda: False)
 
+    @property
+    def uow(self) -> UnitOfWork:
+        """Exposed so sibling controllers (e.g. BrokerHubController) can share
+        the same UnitOfWork instead of the view constructing its own."""
+        return self._uow
+
     def pause(self, *, reason: str = "tray_pause") -> PauseResult:
         """Raise the kill-switch to at least L1. No PIN, ever. Idempotent."""
         with self._uow.session() as session:

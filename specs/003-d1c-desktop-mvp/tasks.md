@@ -78,7 +78,7 @@ fail-OPEN; regression tests in `tests/unit/test_dashboard_snapshot.py`):
 
 ### Deferred — need an Owner decision, NOT silently patched
 
-- [ ] T015 `autotrade-headless` takes no single-instance lock, so the
+- [x] T015 `autotrade-headless` takes no single-instance lock, so the
       `AutoTradeAI.Solo` mutex only excludes a second **desktop**, not
       desktop + headless together. Decide whether the "one trading process"
       invariant (v1.4) should be enforced by a shared lock, and which process
@@ -97,36 +97,36 @@ fail-OPEN; regression tests in `tests/unit/test_dashboard_snapshot.py`):
 
 ### US1 — Install & launch [P1]
 
-- [ ] T020 PyInstaller one-folder spec + build script under `packaging/`
-- [ ] T021 [P] Packaged smoke: launch + single-instance (`tests/packaged/`)
-- [ ] T022 Clean-machine checklist doc in quickstart.md
+- [x] T020 PyInstaller one-folder spec + build script under `packaging/`
+- [x] T021 [P] Packaged smoke: launch + single-instance (`tests/packaged/`)
+- [x] T022 Clean-machine checklist doc in quickstart.md
 
 ### US2 — Broker Hub [P1] (cert gate)
 
-- [ ] T030 Broker Hub views: Paper/DEMO, Test connection, capability redacted
-- [ ] T031 Enable DEMO calls same assert as headless; refuse if invalid cert
-- [ ] T032 Switch account UI fail-closed (flat/recon/UNKNOWN)
-- [ ] T033 Integration tests marker `d1c` with Fake adapter (no REAL required)
+- [x] T030 Broker Hub views: Paper/DEMO, Test connection, capability redacted
+- [x] T031 Enable DEMO calls same assert as headless; refuse if invalid cert
+- [x] T032 Switch account UI fail-closed (flat/recon/UNKNOWN)
+- [x] T033 Integration tests marker `d1c` with Fake adapter (no REAL required)
 
 ### US3 — KS + Live Monitor [P2]
 
-- [ ] T040 KS panel L1–L4 + Pause without PIN
-- [ ] T041 Live Monitor table includes UNKNOWN; no blind-retry button
-- [ ] T042 Flatten confirm dialog → core flatten path
+- [x] T040 KS panel L1–L4 + Pause without PIN
+- [x] T041 Live Monitor table includes UNKNOWN; no blind-retry button
+- [x] T042 Flatten confirm dialog → core flatten path
 
 ### US4 — Strategy / History / Settings [P3]
 
-- [ ] T050 Strategy view read-only hard ceilings
-- [ ] T051 History filter + CSV export redacted
-- [ ] T052 Settings: PIN change, optional Telegram, allowlist read-only, backup trigger
-- [ ] T053 Autostart option (Windows) documented
+- [x] T050 Strategy view read-only hard ceilings
+- [x] T051 History filter + CSV export redacted
+- [x] T052 Settings: PIN change, optional Telegram, allowlist read-only, backup trigger
+- [x] T053 Autostart option (Windows) documented
 
 ---
 
 ## Phase 4: Ops soak D1c (≥14d) — after MVP UI
 
-- [ ] T060 Operational soak runbook (≥14d) separate from D1b 72h
-- [ ] T061 Fill matrix G6 / ADR-D13 packaged Evidence
+- [x] T060 Operational soak runbook (≥14d) separate from D1b 72h — `specs/003-d1c-desktop-mvp/OWNER-D1C-OPS-SOAK.md`
+- [x] T061 Fill matrix G6 / ADR-D13 packaged Evidence — the ≥14d wall-clock window itself is still an Owner action pending against a real machine, tracked in the runbook above, not by this checkbox
 
 ---
 

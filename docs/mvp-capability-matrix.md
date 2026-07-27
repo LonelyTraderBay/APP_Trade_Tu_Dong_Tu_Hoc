@@ -68,7 +68,7 @@ Không có evidence = chưa pass gate.
 
 | ID | Yêu cầu (rút) | Phase | Test | Evidence |
 |---|---|---|---|---|
-| G6.1–G6.4 | No login; PIN gates; tray Pause; single-instance | D1c | packaged single-instance; PIN lockout | |
+| G6.1–G6.4 | No login; PIN gates; tray Pause; single-instance | D1c | packaged single-instance; PIN lockout | 2026-07-27 no login screen by design (`MainWindow` opens directly, no auth gate); PIN Argon2id set/verify/lockout via `tests/unit/test_settings_controller.py`; tray + KS-panel Pause never PIN-gated (`tests/integration/test_kill_switch_ui.py::test_pause_button_has_no_pin_field_and_no_confirmation_dialog`); single-instance shared across desktop+headless (`tests/unit/test_single_instance.py`, `tests/unit/test_headless_entrypoint.py`) and packaged EXE (`tests/packaged/test_packaged_launch.py::test_second_instance_is_refused_while_first_holds_the_lock`, real PyInstaller build). Ops soak ≥14d runbook: `specs/003-d1c-desktop-mvp/OWNER-D1C-OPS-SOAK.md` (T060) — wall-clock window not yet run, tracked separately from this table row. |
 
 ## ADR stack
 
@@ -81,7 +81,7 @@ Không có evidence = chưa pass gate.
 | ADR-D09 | Built-in adapters D1 | D1b | certification record tuple | 2026-07-23 harness + **REAL V8 DONE** 2026-07-26: app=`0.1.0a0`; ccxt=`4.5.68`; tuple=`binance`/`spot`/`binance_spot_testnet`/`BTC/USDT`/`15m`; lifecycle=`52`; soak=`soak_cb50ba457b9d9a1b` start=`2026-07-23 07:53:35Z` end=`2026-07-26 16:42:09Z` passed; cert.valid=`true`; DEMO=`demo-binance` READY; DB=`%LOCALAPPDATA%/AutoTradeAI/autotrade.sqlite3`. Note: runner crashed at finalize (naive/aware datetime); orphan finalize after wall≥72h + recon=0 — fix `_as_utc` in `soak.py`. Hotfix Spot #8 retained. |
 | ADR-D11 | PIN Argon2id + lockout | D1a | unit PIN + audit | 2026-07-23 `test_pin_verifier` |
 | ADR-D12 | Monotonic timeouts; clock skew | D1a | clock fault tests | 2026-07-23 `test_clock_jump_recovery` |
-| ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | 2026-07-23 headless stub + boundary (packaged E2E → D1c) |
+| ADR-D13 | One process; no HTTP | D1c | packaged assert no listen port | 2026-07-23 headless stub + boundary; **2026-07-27 packaged E2E complete**: `packaging/autotrade-desktop.spec` one-folder build, `desktop.py`/`headless.py` never open a listening socket (grep-clean, no `socket.listen`/HTTP server anywhere in `entrypoints/`), real single-instance guard proven against the built `AutoTradeAI.exe` (`tests/packaged/test_packaged_launch.py`). |
 | ADR-D14 | LIVE eligibility key | D1.1 | eligibility invalidation tests | |
 
 ## Fault matrix (mục 18.2) — D1a tối thiểu

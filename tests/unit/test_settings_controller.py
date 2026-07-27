@@ -223,6 +223,104 @@ def test_run_backup_missing_db_returns_typed_error_not_a_raise(
     assert result.error is not None
 
 
+# --- Restore (FR-005) -------------------------------------------------------
+
+
+def _migrated_target(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A second, independently-migrated AutoTrade db (same alembic head as
+    `migrated_uow`'s own db, built the same way `tests/conftest.py` does)
+    to use as an explicit `db_path` restore target — never the real
+    `%LOCALAPPDATA%\\AutoTradeAI` path."""
+    from alembic import command
+    from alembic.config import Config
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("AUTOTRADE_DATA_DIR", str(data_dir))
+    cfg = Config("src/autotrade/persistence/alembic.ini")
+    cfg.set_main_option("script_location", str(Path("src/autotrade/persistence/alembic")))
+    command.upgrade(cfg, "head")
+    return data_dir / "autotrade.sqlite3"
+
+
+@pytest.mark.d1c
+def test_run_restore_against_injected_temp_paths_succeeds_and_takes_a_safety_backup(
+    migrated_uow: UnitOfWork, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autotrade.persistence.backup import snapshot_database
+    from autotrade.persistence.engine import default_db_path
+
+    # `migrated_uow` (see conftest.py) already migrated a real db at
+    # `default_db_path()` — capture it *before* re-pointing
+    # AUTOTRADE_DATA_DIR at a second directory below.
+    backup_file = snapshot_database(default_db_path(), tmp_path / "backup_store")
+
+    target_path = _migrated_target(tmp_path / "restore_target", monkeypatch)
+
+    controller = SettingsController(migrated_uow)
+    safety_dir = tmp_path / "safety"
+
+    result = controller.run_restore(
+        backup_file, db_path=target_path, safety_backup_dir=safety_dir
+    )
+
+    assert result.ok is True
+    assert "restart" in result.message.lower()
+    assert result.safety_backup_path is not None
+    assert result.safety_backup_path.exists()
+    assert result.safety_backup_path.parent == safety_dir
+
+
+@pytest.mark.d1c
+def test_run_restore_missing_backup_returns_typed_error_not_a_raise(
+    migrated_uow: UnitOfWork, tmp_path: Path
+) -> None:
+    controller = SettingsController(migrated_uow)
+
+    result = controller.run_restore(
+        tmp_path / "does-not-exist.sqlite3", db_path=tmp_path / "target.sqlite3"
+    )
+
+    assert result.ok is False
+    assert result.message
+    assert result.safety_backup_path is None
+
+
+@pytest.mark.d1c
+def test_run_restore_incompatible_schema_returns_typed_error_not_a_raise(
+    migrated_uow: UnitOfWork, tmp_path: Path
+) -> None:
+    import sqlite3
+
+    bogus_backup = tmp_path / "bogus.sqlite3"
+    conn = sqlite3.connect(bogus_backup)
+    try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES ('bogus_old_rev')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    controller = SettingsController(migrated_uow)
+    target_path = tmp_path / "target" / "autotrade.sqlite3"
+
+    result = controller.run_restore(bogus_backup, db_path=target_path)
+
+    assert result.ok is False
+    assert "schema" in result.message.lower()
+    assert not target_path.exists()
+
+
+@pytest.mark.d1c
+def test_default_backups_dir_matches_run_backups_default(
+    migrated_uow: UnitOfWork,
+) -> None:
+    from autotrade.persistence.engine import default_db_path
+
+    controller = SettingsController(migrated_uow)
+
+    assert controller.default_backups_dir() == default_db_path().parent / "backups"
+
+
 # --- Autostart (T053) --------------------------------------------------------
 
 

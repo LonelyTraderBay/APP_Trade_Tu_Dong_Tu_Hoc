@@ -1,5 +1,5 @@
 """T052/T053 — Settings page: PIN, Telegram, allowlist (read-only), backup,
-autostart.
+restore (FR-005), autostart.
 
 One `QGroupBox` per concern, matching `kill_switch_page.py`'s established
 card style. Every mutating action goes through `SettingsController` — this
@@ -16,12 +16,19 @@ Hard safety invariants enforced here:
 - The allowlist card is built entirely from `QLabel`s — no editable widget
   exists for it, ever (`core/domain/allowlist.py`'s own docstring: Owner-
   locked immutable data).
+- Restore is genuinely destructive (overwrites the live trading database),
+  so it follows `kill_switch_page.py`'s Flatten idiom exactly: a REQUIRED
+  Yes/No confirm dialog, default answer No, and answering anything but Yes
+  is a hard no-op — no controller call, no file touched.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -35,6 +42,13 @@ from PySide6.QtWidgets import (
 
 from autotrade.app_ui.controllers.settings import SettingsController
 from autotrade.app_ui.services.settings import SettingsView
+
+RESTORE_CONFIRM_TEXT = (
+    "This will overwrite the current database with the selected backup file. "
+    "A safety backup of the CURRENT database will be taken first, so this can "
+    "be undone by restoring that safety backup — but the restore you are about "
+    "to run cannot be undone from within the app. Continue?"
+)
 
 
 class SettingsPage(QWidget):
@@ -197,9 +211,19 @@ class SettingsPage(QWidget):
         self.backup_result_label.setObjectName("backupResultLabel")
         self.backup_result_label.setWordWrap(True)
 
+        self.restore_button = QPushButton("Restore from backup...")
+        self.restore_button.setObjectName("restoreButton")
+        self.restore_button.clicked.connect(self._on_restore)
+
+        self.restore_result_label = QLabel("")
+        self.restore_result_label.setObjectName("restoreResultLabel")
+        self.restore_result_label.setWordWrap(True)
+
         layout = QVBoxLayout(card)
         layout.addWidget(self.backup_button)
         layout.addWidget(self.backup_result_label)
+        layout.addWidget(self.restore_button)
+        layout.addWidget(self.restore_result_label)
         return card
 
     def _build_autostart_card(self) -> QGroupBox:
@@ -311,6 +335,46 @@ class SettingsPage(QWidget):
         else:
             self.backup_result_label.setText(f"Backup failed: {result.error}")
             QMessageBox.warning(self, "Backup failed", result.error or "Unknown error.")
+
+    # --- actions: Restore (FR-005) --------------------------------------------
+
+    def _on_restore(self) -> None:
+        """Genuinely destructive: overwrites the live trading database.
+
+        File picker (scoped to the backups directory) -> REQUIRED Yes/No
+        confirm (default No, exact idiom as Kill-switch's Flatten) ->
+        `SettingsController.run_restore`. Answering anything but Yes, or
+        cancelling the file picker, is a hard no-op — no controller call.
+        """
+        backups_dir = self._controller.default_backups_dir()
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select backup file", str(backups_dir), "SQLite backups (*.sqlite3)"
+        )
+        if not file_path:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Confirm restore",
+            RESTORE_CONFIRM_TEXT,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = self._controller.run_restore(Path(file_path))
+        except Exception as exc:  # noqa: BLE001 - a restore must never crash the page
+            self.restore_result_label.setText(f"Restore unavailable — {type(exc).__name__}")
+            QMessageBox.critical(self, "Restore failed", f"Unexpected error: {exc}")
+            return
+
+        self.restore_result_label.setText(result.message)
+        if result.ok:
+            QMessageBox.information(self, "Restore complete", result.message)
+        else:
+            QMessageBox.warning(self, "Restore failed", result.message)
 
     # --- actions: Autostart --------------------------------------------------
 

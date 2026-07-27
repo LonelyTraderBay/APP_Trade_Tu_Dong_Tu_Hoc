@@ -123,6 +123,172 @@ fail-OPEN; regression tests in `tests/unit/test_dashboard_snapshot.py`):
 
 ---
 
+## Post-audit fixes
+
+- [x] T070 **FR-004 gap**: `run_startup_recovery` (`core/oms/recovery.py`) was
+      fully implemented and D1a-tested but was only ever called from tests and
+      D1b's soak/lifecycle harnesses — never from `entrypoints/desktop.py`. The
+      Owner could open MainWindow and reach Broker Hub / Kill-switch / Live
+      Monitor after a crash, sleep/resume, or interrupted session without the
+      kill-switch-restore / adapter-connectivity / pagination / data-freshness
+      / recon checklist ever running. Fixed by adding
+      `app_ui/services/startup.py::run_desktop_startup_recovery` (Qt-free,
+      mirrors `BrokerHubController`/`KillSwitchController` adapter
+      construction) and wiring it into `desktop.py::main()` — after the
+      single-instance guard, before `_run_gui()` shows the window and before
+      the `--check` banner prints, so both reflect POST-recovery state. A
+      locked result is passed through to `_run_gui`, which appends the
+      recovery reasons to the MainWindow status bar (no new modal — same
+      non-interrupting treatment as any other SAFE_LOCK/blocked state).
+      Tests: `tests/unit/test_startup_service.py`,
+      `tests/unit/test_desktop_entrypoint.py`.
+
+- [x] T071 **G1.2/G7 gap**: architecture's core product promise — "Owner tự
+      kết nối trong app (wizard), không cần sửa code": chọn adapter → nhập
+      credential → Test connection → lưu (secret vào keyring) → chọn
+      Demo/Live — had no UI code path at all. The only way to store DEMO
+      credentials was `autotrade-headless demo-store-creds --account-id
+      demo-binance` (two `getpass.getpass()` prompts, terminal only); Broker
+      Hub's Test/Enable buttons assumed a keyring entry already existed.
+      Fixed by adding a credential-entry form to Broker Hub's DEMO card
+      (`app_ui/views/broker_hub_page.py`: two `EchoMode.Password`
+      `QLineEdit`s + "Save credentials", cleared after every submit attempt)
+      wired to a new `BrokerHubController.store_credentials()`
+      (`app_ui/controllers/broker_hub.py`) that mirrors
+      `entrypoints/headless.py::_demo_store_creds` exactly — same
+      `KEYRING_SERVICE = "AutoTradeAI"`, same `f"{account_id}:api_key"` /
+      `f"{account_id}:api_secret"` keyring keys, same "create
+      `Account(status=NEW, eligibility=INELIGIBLE, is_active=False)` only if
+      one doesn't already exist, never overwrite an existing row" shape — so
+      the CLI and the UI never disagree about where a DEMO credential lives.
+      `BrokerHubState` gained `demo_credentials_configured` (presence-only,
+      via `load_secret(...) is not None`, same split as
+      `SettingsController.telegram_configured()`); Test connection / Enable
+      DEMO reuse the existing `can_enable_demo`/`cert_gate_reason`
+      setEnabled+setToolTip idiom (new `demo_ready_for_connection` /
+      `credentials_gate_reason` properties) to explain "store credentials
+      first" instead of a second disabled-state mechanism. Also added the
+      G7 step 5/6 VERIFIED/DENIED/UNKNOWN verdict to
+      `BrokerHubController.test_connection` (`ConnectionTestResult.verdict`,
+      surfaced in the audit payload and the Broker Hub test-result label):
+      VERIFIED on a clean `connect()`+`get_capabilities()`, DENIED only for
+      an exception whose type name looks like ccxt's real
+      `AuthenticationError`/`PermissionDenied` family (checked by class name,
+      not a `ccxt` import — the UI layer must never import `ccxt`), UNKNOWN
+      otherwise. Honest limitation: `FakeCcxtExchange`'s `fail_auth`
+      sentinel raises a plain `RuntimeError`, so DENIED is not reachable
+      through any fake/mock in this codebase today — only through a real
+      ccxt client raising a real typed auth error. Withdraw-permission
+      detection (G7 step 6, LIVE-only) remains out of scope; no such API
+      surface exists in the fake/real adapter.
+      Tests: `tests/unit/test_broker_hub_controller.py`,
+      `tests/integration/test_broker_hub_ui.py` (both suites gained an
+      autouse `FakeKeyring` fixture — mirrors
+      `test_settings_controller.py`/`test_settings_ui.py`'s — since every
+      `snapshot()` call now reads the keyring for
+      `demo_credentials_configured`; neither suite touched keyring at all
+      before this fix).
+
+- [x] T072 **FR-005 gap**: `contracts/packaged-ops.md` requires "Restore:
+      refuse if schema_meta incompatible; never restore plaintext secrets"
+      but only `persistence/backup.py::snapshot_database` existed — restore
+      was entirely unimplemented (zero matches anywhere in the repo for
+      `restore_database`/`restore_backup`). Investigation finding: the ORM's
+      `SchemaMeta` model (`schema_meta` table) is registered with Alembic's
+      metadata and its table is created by migration `0001_adr_d03_1`, but
+      no migration and no application code anywhere ever INSERTs a row into
+      it — verified by grepping the entire `src/` tree. It is dead schema,
+      always empty in practice, so the real compatibility signal is
+      Alembic's own internal `alembic_version` table (a separate, standard
+      table Alembic stamps automatically on every `upgrade`). Fixed by
+      adding `persistence/backup.py::restore_database` (mirrors
+      `snapshot_database`'s SQLite backup API + `PRAGMA integrity_check` +
+      explicit-close-before-filesystem-op pattern): refuses on a corrupt
+      backup, refuses unless the backup's `alembic_version` exactly equals
+      `alembic.script.ScriptDirectory.get_current_head()` (no
+      forward-migration-on-restore), takes a safety snapshot of the current
+      target DB before overwriting it (reuses `snapshot_database`, skipped
+      only when the target doesn't exist yet), then commits atomically via
+      `Path.replace` with a fallback to an in-place SQLite-backup-API
+      overwrite when `Path.replace` raises `PermissionError` — verified
+      empirically that this happens on Windows whenever the target is held
+      open by another connection (e.g. the same running app's own live
+      SQLAlchemy engine), since SQLite's Windows VFS does not open files
+      with `FILE_SHARE_DELETE` even for an idle, no-transaction connection;
+      restoring from inside the running app is the normal case here, not an
+      edge case. Also found and fixed a related bug while building the
+      safety-snapshot step: `snapshot_database`'s 1-second-resolution
+      stamped filenames plus its same-directory default meant a safety
+      snapshot taken *before* reading the backup source could, on a
+      same-timestamp collision, silently overwrite the backup file being
+      restored from, turning the restore into a no-op — fixed by reordering
+      `restore_database` to fully capture+verify the backup source into an
+      independent temp file *before* ever taking the safety snapshot.
+      Never touches the OS keyring — secrets were never in SQLite to begin
+      with, so nothing needs restoring there;
+      `persistence.secrets.load_secret` already returns `None` gracefully
+      for any keyring ref the restored DB references that doesn't exist on
+      this machine. Wired into `SettingsController.run_restore` (mirrors
+      `run_backup`'s shape; defaults to the real runtime path, tests always
+      inject `db_path`) and `SettingsPage` ("Restore from backup..."
+      button: `QFileDialog` scoped to the backups directory → REQUIRED
+      Yes/No confirm dialog naming the safety-backup behavior, default No,
+      exact idiom as Kill-switch's Flatten confirm → on success tells the
+      Owner to restart the app, no in-process engine reconnection
+      attempted).
+      Tests: `tests/unit/test_backup.py` (new file — `snapshot_database`
+      had no dedicated unit tests before this either), extended
+      `tests/unit/test_settings_controller.py` and
+      `tests/integration/test_settings_ui.py`.
+
+- [x] T073 **Cross-reference (D1a-scoped gap, fixed there)**: the
+      `IntentState.CANCEL_REQUESTED`/`CANCEL_UNKNOWN` FSM-states-with-no-
+      driving-code gap (new `core/oms/cancel.py::cancel_intent` +
+      `autotrade-headless cancel-intent --intent-id <id>` CLI + new
+      terminal `IntentState.CANCELED`) is recorded in full under
+      `specs/001-d1a-paper-core/tasks.md` T066, since it's a D1a fault-
+      matrix ("cancel timeout + late fill") gap, not a D1c one. Confirmed
+      as part of that fix: D1c's Live Monitor
+      (`app_ui/services/dashboard.py::INFLIGHT_INTENT_STATES`) already
+      listed `CANCEL_UNKNOWN`, so it already surfaced a lingering cancel
+      correctly — no `app_ui/` change was made or needed. No new UI
+      affordance was added (a cancel button is a separate, bigger decision
+      than this task's scope covered) — cancellation is CLI-only for now,
+      same posture as T041's deliberate "no blind-retry/resubmit button"
+      on Live Monitor.
+
+- [x] T074 **Cross-reference (D1a-scoped gap, fixed there)**: ADR-D12
+      (clock-skew/monotonic-timeout detection) — real detection logic and
+      its fault test are recorded in full under
+      `specs/001-d1a-paper-core/tasks.md` T071, since it's a D1a fault-
+      matrix ("sleep/resume or wall-clock jump") gap, not a D1c one. The
+      desktop-side wiring lands in this tree only because that's where the
+      integration point already lives: new
+      `core/domain/clock.py::detect_clock_jump` (pure, Qt-free — backward-
+      wall-clock check is cross-restart-safe; monotonic-vs-wall divergence
+      check is same-process-only, by construction of `time.monotonic()`),
+      new `app_ui/services/clock_checkpoint.py`
+      (`read_last_wall_checkpoint`/`write_wall_checkpoint`, `AppSetting`-
+      backed, same reuse pattern as `app_ui/services/settings.py`'s
+      autostart preference — no new table/migration), wired into
+      `app_ui/services/startup.py::run_desktop_startup_recovery` (checks
+      the persisted checkpoint at every launch; locks the `AccountGate`
+      through the same `gate.lock(...)` path Startup Recovery already uses
+      on a detected backward jump; advances the checkpoint only after a
+      fully successful, non-locked recovery). Evaluated adding a `QTimer`
+      to `MainWindow` (`app_ui/views/main_window.py`) to get a second,
+      same-process checkpoint for the monotonic-divergence check — would
+      have been the first `QTimer` anywhere in `app_ui/` (no existing
+      precedent) and would also need to re-lock a *running* session
+      (banner refresh, blocking further trading mid-session), which is
+      more surface than this fix's blast radius warrants on its own;
+      scoped OUT and flagged as follow-up. `detect_clock_jump`'s
+      monotonic-divergence check is fully implemented and unit-tested
+      regardless — only the periodic same-process caller is missing. No
+      other `app_ui/` change was made or needed.
+
+---
+
 ## Phase 4: Ops soak D1c (≥14d) — after MVP UI
 
 - [x] T060 Operational soak runbook (≥14d) separate from D1b 72h — `specs/003-d1c-desktop-mvp/OWNER-D1C-OPS-SOAK.md`

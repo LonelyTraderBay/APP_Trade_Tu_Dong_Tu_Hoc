@@ -55,7 +55,7 @@ AppSettings / PinVerifier / SchemaMeta
 
 States per v1.4 §11 (subset exercised in D1a Paper):
 
-`CREATED` → `RISK_REJECTED` | `RESERVED` → `SUBMITTING` → `ACKNOWLEDGED` | `FILLED` | `REJECTED` | `UNKNOWN` → (via recon) terminal broker-aligned states; cancel path includes `CANCEL_REQUESTED` / `CANCEL_UNKNOWN`.
+`CREATED` → `RISK_REJECTED` | `RESERVED` → `SUBMITTING` → `ACKNOWLEDGED` | `FILLED` | `REJECTED` | `UNKNOWN` → (via recon) terminal broker-aligned states; cancel path (`core/oms/cancel.py::cancel_intent`, ACKNOWLEDGED-only) includes `CANCEL_REQUESTED` / `CANCEL_UNKNOWN` / `CANCELED` — `CANCELED` is the terminal "cancel confirmed by broker" outcome, deliberately distinct from `REJECTED` ("broker refused the order attempt").
 
 **Delivery certainty** (separate axis): `NOT_SENT` → `SENDING` → `CONFIRMED` | `MAY_HAVE_BEEN_ACCEPTED`.
 

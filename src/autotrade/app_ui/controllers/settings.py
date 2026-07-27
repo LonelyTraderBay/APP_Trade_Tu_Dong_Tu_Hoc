@@ -19,6 +19,13 @@ Contract (`contracts/ui-core-boundary.md`):
   against the real runtime DB path (`persistence.engine.default_db_path`)
   by default; tests inject `db_path` to avoid ever touching a real machine's
   data directory.
+- Restore (FR-005) wires `persistence.backup.restore_database` the same
+  way — real runtime DB path by default, tests always inject `db_path`.
+  `restore_database` already refuses incompatible backups and takes a
+  safety snapshot of the current DB before overwriting it; this controller
+  only translates that typed result into a UI-facing message (always
+  telling the Owner to restart the app on success — a live SQLAlchemy
+  engine/session pointed at the now-replaced file is not hot-reloaded).
 - Autostart (T053) writes the Windows Run-key via
   `app_ui.services.autostart` AND mirrors the on/off preference into the
   existing `app_settings` table — the checkbox always reflects the
@@ -77,6 +84,17 @@ class BackupResult:
     ok: bool
     path: Path | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreUiResult:
+    """Outcome of a manual Restore. `message` is exactly what the view
+    shows — on success it always includes the "restart the app" wording
+    and names the safety-backup path if one was taken."""
+
+    ok: bool
+    message: str
+    safety_backup_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +243,60 @@ class SettingsController:
         except Exception as exc:  # noqa: BLE001 - contract: never raise into Qt
             return BackupResult(ok=False, error=str(exc))
         return BackupResult(ok=True, path=result_path)
+
+    def default_backups_dir(self) -> Path:
+        """The directory `run_backup`/`run_restore` use by default (same
+        `backups/` folder next to the runtime DB). Exposed so the view can
+        scope the restore file-picker there without importing
+        `persistence` directly (contract: this file never does)."""
+        from autotrade.persistence.engine import default_db_path
+
+        return default_db_path().parent / "backups"
+
+    # --- Restore (FR-005) -------------------------------------------------
+
+    def run_restore(
+        self,
+        backup_path: Path,
+        *,
+        db_path: Path | None = None,
+        safety_backup_dir: Path | None = None,
+    ) -> RestoreUiResult:
+        """Wraps `persistence.backup.restore_database`. Defaults to the real
+        runtime DB path — tests must always pass `db_path` explicitly.
+
+        `restore_database` never raises and already refuses incompatible
+        backups + takes a safety snapshot before overwriting; this method
+        only turns that typed result into UI-facing text. Never claims
+        secrets were restored — they never lived in SQLite to begin with.
+        """
+        from autotrade.persistence.backup import restore_database
+        from autotrade.persistence.engine import default_db_path
+
+        target = db_path or default_db_path()
+        try:
+            result = restore_database(
+                backup_path, target, safety_backup_dir=safety_backup_dir
+            )
+        except Exception as exc:  # noqa: BLE001 - contract: never raise into Qt
+            return RestoreUiResult(ok=False, message=str(exc))
+
+        if not result.ok:
+            return RestoreUiResult(
+                ok=False,
+                message=result.error or "Restore failed.",
+                safety_backup_path=result.safety_backup_path,
+            )
+
+        message = "Database restored. Restart AutoTrade AI for the change to take effect."
+        if result.safety_backup_path is not None:
+            message += (
+                f" A safety backup of the previous database was saved to "
+                f"{result.safety_backup_path}."
+            )
+        return RestoreUiResult(
+            ok=True, message=message, safety_backup_path=result.safety_backup_path
+        )
 
     # --- Autostart (T053) ------------------------------------------------
 

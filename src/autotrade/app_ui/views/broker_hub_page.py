@@ -4,6 +4,18 @@ All behaviour lives in `BrokerHubController`; this file only renders its read
 model and turns typed refusals (`EnableDemoResult`, `SwitchAccountResult`)
 into modals. It must never call `core.*`/SQLAlchemy/ccxt directly — see
 `specs/003-d1c-desktop-mvp/contracts/ui-core-boundary.md`.
+
+G1.2/G7 "tự kết nối" credential form (Owner types a DEMO key/secret here
+instead of needing `autotrade-headless demo-store-creds` in a terminal):
+- Both inputs use `EchoMode.Password` and are cleared immediately after every
+  submit attempt (success or failure) — same treatment as
+  `settings_page.py`'s PIN/Telegram fields. Once stored, a credential is
+  never read back into any widget; only "configured"/"not configured" is
+  ever shown (`BrokerHubState.demo_credentials_configured`).
+- Test connection / Enable DEMO reuse the existing `setEnabled` +
+  `setToolTip` idiom (`can_enable_demo` / `cert_gate_reason`) for the new
+  "store credentials first" precondition — see
+  `BrokerHubState.demo_ready_for_connection` / `credentials_gate_reason`.
 """
 
 from __future__ import annotations
@@ -13,6 +25,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -74,6 +87,36 @@ class BrokerHubPage(QWidget):
         self.test_result.setObjectName("testResult")
         self.test_result.setWordWrap(True)
 
+        # --- DEMO credential form (G1.2/G7 "tự kết nối") ------------------
+        self.demo_credentials_status_label = QLabel("")
+        self.demo_credentials_status_label.setObjectName("demoCredentialsStatusLabel")
+
+        self.demo_api_key_input = QLineEdit()
+        self.demo_api_key_input.setObjectName("demoApiKeyInput")
+        self.demo_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.demo_api_key_input.setPlaceholderText("DEMO API key")
+
+        self.demo_api_secret_input = QLineEdit()
+        self.demo_api_secret_input.setObjectName("demoApiSecretInput")
+        self.demo_api_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.demo_api_secret_input.setPlaceholderText("DEMO API secret")
+
+        self.save_demo_credentials_button = QPushButton("Save credentials")
+        self.save_demo_credentials_button.setObjectName("saveDemoCredentialsButton")
+        self.save_demo_credentials_button.clicked.connect(self._on_save_demo_credentials)
+
+        self.demo_credentials_result_label = QLabel("")
+        self.demo_credentials_result_label.setObjectName("demoCredentialsResultLabel")
+        self.demo_credentials_result_label.setWordWrap(True)
+
+        credentials_form = QWidget()
+        credentials_form_layout = QVBoxLayout(credentials_form)
+        credentials_form_layout.setContentsMargins(0, 0, 0, 0)
+        credentials_form_layout.addWidget(self.demo_api_key_input)
+        credentials_form_layout.addWidget(self.demo_api_secret_input)
+        credentials_form_layout.addWidget(self.save_demo_credentials_button)
+        credentials_form_layout.addWidget(self.demo_credentials_result_label)
+
         buttons = QWidget()
         buttons_layout = QHBoxLayout(buttons)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
@@ -102,6 +145,8 @@ class BrokerHubPage(QWidget):
         demo_layout = QVBoxLayout(self.demo_card)
         demo_layout.addWidget(self.demo_status)
         demo_layout.addWidget(self.cert_status)
+        demo_layout.addWidget(self.demo_credentials_status_label)
+        demo_layout.addWidget(credentials_form)
         demo_layout.addWidget(buttons)
         demo_layout.addWidget(self.test_result)
 
@@ -135,6 +180,7 @@ class BrokerHubPage(QWidget):
             self.demo_status.setText("")
             self.cert_status.setText("")
             self.enable_demo_button.setEnabled(False)
+            self.test_connection_button.setEnabled(False)
             return
         self._render(state)
 
@@ -148,22 +194,66 @@ class BrokerHubPage(QWidget):
         self.cert_status.setText(
             f"Certification: {'VALID' if state.cert_valid else 'NOT VALID'}"
         )
+        self.demo_credentials_status_label.setText(
+            "DEMO credentials: "
+            + ("configured" if state.demo_credentials_configured else "not configured")
+        )
 
-        self.enable_demo_button.setEnabled(state.can_enable_demo)
-        self.enable_demo_button.setToolTip(state.cert_gate_reason)
+        # Test connection / Enable DEMO share one gating idiom: setEnabled +
+        # setToolTip. A cert refusal (existing behaviour) takes priority over
+        # the new "store credentials first" precondition so the tooltip text
+        # operators already rely on doesn't change when cert is invalid.
+        if not state.cert_valid:
+            enable_tooltip = state.cert_gate_reason
+        elif not state.demo_ready_for_connection:
+            enable_tooltip = state.credentials_gate_reason
+        else:
+            enable_tooltip = state.cert_gate_reason
+        self.enable_demo_button.setEnabled(
+            state.can_enable_demo and state.demo_ready_for_connection
+        )
+        self.enable_demo_button.setToolTip(enable_tooltip)
+
+        self.test_connection_button.setEnabled(state.demo_ready_for_connection)
+        self.test_connection_button.setToolTip(
+            "" if state.demo_ready_for_connection else state.credentials_gate_reason
+        )
 
         if state.last_test_at is None:
             self.test_result.setText("No connection test run yet.")
         elif state.last_error_redacted:
             self.test_result.setText(
-                f"Last test ({state.last_test_at}) failed: {state.last_error_redacted}"
+                f"Last test ({state.last_test_at}) failed [{state.last_verdict}]:"
+                f" {state.last_error_redacted}"
             )
         else:
             self.test_result.setText(
-                f"Last test ({state.last_test_at}) OK: {state.capabilities_redacted}"
+                f"Last test ({state.last_test_at}) OK [{state.last_verdict}]:"
+                f" {state.capabilities_redacted}"
             )
 
     # --- actions ---------------------------------------------------------
+
+    def _on_save_demo_credentials(self) -> None:
+        api_key = self.demo_api_key_input.text()
+        api_secret = self.demo_api_secret_input.text()
+
+        result = self._controller.store_credentials(
+            self._controller.demo_account_id, api_key=api_key, api_secret=api_secret
+        )
+
+        # Clear both fields immediately after every submit attempt, success
+        # or failure — plaintext must never linger in a widget (same rule as
+        # settings_page.py's PIN/Telegram fields).
+        self.demo_api_key_input.clear()
+        self.demo_api_secret_input.clear()
+
+        if result.ok:
+            self.demo_credentials_result_label.setText("DEMO credentials saved.")
+            self.refresh()
+        else:
+            self.demo_credentials_result_label.setText(result.error or "Save failed.")
+            QMessageBox.warning(self, "Save failed", result.error or "Unknown error.")
 
     def _on_test_connection(self) -> None:
         result = self._controller.test_connection(mode="DEMO")

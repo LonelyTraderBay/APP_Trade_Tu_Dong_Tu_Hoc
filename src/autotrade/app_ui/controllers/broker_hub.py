@@ -11,6 +11,12 @@ Contract (`contracts/ui-core-boundary.md`):
 - `switch_account` — fail-closed, no PIN, mirrors headless's `_switch_account`.
   `SwitchRejected` reason codes (`not_flat`, `open_recon`,
   `unknown_or_submitting`) are surfaced verbatim in `SwitchAccountResult`.
+- `store_credentials` (G1.2/G7 "tự kết nối") — keyring-ref-only storage that
+  mirrors `entrypoints/headless.py::_demo_store_creds` exactly (same
+  `KEYRING_SERVICE`, same `f"{account_id}:api_key"` / `f"{account_id}:api_secret"`
+  keys, same "create Account(status=NEW, eligibility=INELIGIBLE) only if one
+  doesn't already exist" shape) so the CLI and the UI never disagree about
+  where a DEMO credential lives. Never returns the plaintext back to the view.
 """
 
 from __future__ import annotations
@@ -30,10 +36,14 @@ from autotrade.app_ui.services.broker_hub import (
 from autotrade.core.accounts.active import SwitchRejected, switch_active_account
 from autotrade.core.accounts.bindings import bind_demo_strategy
 from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter, FakeCcxtExchange
-from autotrade.core.certify.records import CertificationNotValid, assert_cert_valid_for_trading
+from autotrade.core.certify.records import (
+    CertificationNotValid,
+    assert_cert_valid_for_trading,
+    capture_baseline,
+)
 from autotrade.core.domain.redaction import redact_mapping, redact_text
 from autotrade.core.oms.account_state import AccountStatus
-from autotrade.persistence.models import Account, AuditEvent
+from autotrade.persistence.models import Account, AccountSecretsRef, AuditEvent
 from autotrade.persistence.uow import UnitOfWork
 
 DEFAULT_DEMO_ACCOUNT_ID = "demo-binance"
@@ -47,6 +57,28 @@ KEYRING_SERVICE = "AutoTradeAI"
 ExchangeFactory = Callable[[], Any]
 
 
+def _classify_connection_error(exc: Exception) -> str:
+    """Best-effort VERIFIED/DENIED/UNKNOWN verdict on a *failed* connection.
+
+    Real ccxt clients raise a typed `ccxt.AuthenticationError` /
+    `ccxt.PermissionDenied` for bad credentials or insufficient permissions.
+    This checks the raised exception's *class name* for that family instead
+    of importing `ccxt` directly — the UI layer must never import `ccxt`
+    (`contracts/ui-core-boundary.md`).
+
+    Honest limitation: `FakeCcxtExchange`'s `fail_auth` sentinel (used by
+    every test in this codebase) raises a plain `RuntimeError("auth_failed")`
+    today, so this still resolves to UNKNOWN against the fake. DENIED is only
+    reachable against a real ccxt client raising a real typed auth/permission
+    error — there is no fake/mock in this codebase that can exercise DENIED
+    today, and this function does not invent message-sniffing to fake one.
+    """
+    name = type(exc).__name__
+    if any(token in name for token in ("Authentication", "PermissionDenied", "Unauthorized")):
+        return "DENIED"
+    return "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class ConnectionTestResult:
     """Outcome of `test_connection` — never raises into the view."""
@@ -54,6 +86,18 @@ class ConnectionTestResult:
     ok: bool
     capabilities: dict[str, Any] | None
     error_redacted: str | None
+    #: G7 step 5 — "VERIFIED / DENIED / UNKNOWN" verdict on the connection
+    #: attempt itself (not a withdraw-permission check — see module docstring
+    #: and `_classify_connection_error` for the honest limitation).
+    verdict: str = "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialStoreResult:
+    """Outcome of `store_credentials`. Never carries the plaintext back."""
+
+    ok: bool
+    error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,10 +136,75 @@ class BrokerHubController:
         self._exchange_factory = exchange_factory
         self._demo_account_id = demo_account_id
 
+    @property
+    def demo_account_id(self) -> str:
+        """The DEMO account id this controller operates on (view-visible;
+        never a secret, unlike the credentials themselves)."""
+        return self._demo_account_id
+
     def snapshot(self) -> BrokerHubState:
         """Read-only projection for the Broker Hub page."""
+        credentials_configured = self.demo_credentials_configured()
         with self._uow.session() as session:
-            return build_broker_hub_state(session)
+            return build_broker_hub_state(
+                session, demo_credentials_configured=credentials_configured
+            )
+
+    def demo_credentials_configured(self, account_id: str | None = None) -> bool:
+        """Presence-only check, same idiom as `SettingsController.telegram_configured()`
+        — never returns the credential values themselves."""
+        from autotrade.persistence.secrets import SecretRef, load_secret
+
+        target = account_id or self._demo_account_id
+        return (
+            load_secret(SecretRef(KEYRING_SERVICE, f"{target}:api_key")) is not None
+            and load_secret(SecretRef(KEYRING_SERVICE, f"{target}:api_secret")) is not None
+        )
+
+    def store_credentials(
+        self, account_id: str, *, api_key: str, api_secret: str
+    ) -> CredentialStoreResult:
+        """Mirrors `entrypoints/headless.py::_demo_store_creds` exactly: same
+        keyring service/keys, same "create the Account row only if one
+        doesn't already exist, never overwrite status/eligibility of an
+        existing row" shape. Keyring-ref only — the key/secret are never
+        written to SQLite and never returned to the view once stored."""
+        if not api_key or not api_secret:
+            return CredentialStoreResult(
+                ok=False, error="API key and secret are both required."
+            )
+
+        from autotrade.persistence.secrets import SecretRef, store_secret
+
+        user_key = f"{account_id}:api_key"
+        user_secret = f"{account_id}:api_secret"
+        try:
+            store_secret(SecretRef(KEYRING_SERVICE, user_key), api_key)
+            store_secret(SecretRef(KEYRING_SERVICE, user_secret), api_secret)
+        except Exception as exc:  # noqa: BLE001 - contract: never raise into Qt
+            return CredentialStoreResult(ok=False, error=redact_text(str(exc)))
+
+        with self._uow.session() as session:
+            acc = session.get(Account, account_id)
+            if acc is None:
+                acc = Account(
+                    account_id=account_id,
+                    adapter_id="ccxt",
+                    mode="DEMO",
+                    endpoint=DEMO_ENDPOINT,
+                    status="NEW",
+                    eligibility="INELIGIBLE",
+                    is_active=False,
+                )
+                session.add(acc)
+            session.merge(
+                AccountSecretsRef(
+                    account_id=account_id,
+                    keyring_service=KEYRING_SERVICE,
+                    keyring_user=user_key,
+                )
+            )
+        return CredentialStoreResult(ok=True)
 
     def test_connection(self, mode: str = "DEMO") -> ConnectionTestResult:
         """No PIN. Never raises into the view — errors come back redacted."""
@@ -105,16 +214,22 @@ class BrokerHubController:
                 ok=True,
                 capabilities={"adapter_id": "paper", "connected": True},
                 error_redacted=None,
+                verdict="VERIFIED",
             )
         else:
             try:
                 adapter = self._build_adapter()
                 adapter.connect()
                 caps = redact_mapping(adapter.get_capabilities())
-                result = ConnectionTestResult(ok=True, capabilities=caps, error_redacted=None)
+                result = ConnectionTestResult(
+                    ok=True, capabilities=caps, error_redacted=None, verdict="VERIFIED"
+                )
             except Exception as exc:  # noqa: BLE001 - contract: never raise into Qt
                 result = ConnectionTestResult(
-                    ok=False, capabilities=None, error_redacted=redact_text(str(exc))
+                    ok=False,
+                    capabilities=None,
+                    error_redacted=redact_text(str(exc)),
+                    verdict=_classify_connection_error(exc),
                 )
         self._record_test(mode=mode, result=result)
         return result
@@ -131,6 +246,16 @@ class BrokerHubController:
                 assert_cert_valid_for_trading(session)
             except CertificationNotValid as exc:
                 return EnableDemoResult(ok=False, account_id=None, refused_reason=str(exc))
+
+            # FR-009 baseline capture — best-effort provenance, not a new
+            # gate. The cert gate above already passed; a snapshot failure
+            # here must never refuse or crash the enable (contract: never
+            # raise into Qt).
+            try:
+                adapter = CcxtDemoAdapter(endpoint=DEMO_ENDPOINT)
+                capture_baseline(session, capability=adapter.get_capabilities())
+            except Exception:  # noqa: BLE001 - best-effort, must not block enable
+                pass
 
             acc = session.get(Account, target)
             if acc is None:
@@ -244,6 +369,7 @@ class BrokerHubController:
                         "ok": result.ok,
                         "capabilities": result.capabilities,
                         "error": result.error_redacted,
+                        "verdict": result.verdict,
                     },
                     at=datetime.now(UTC),
                 )

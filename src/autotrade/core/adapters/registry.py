@@ -8,7 +8,7 @@ from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter
 from autotrade.core.adapters.ccxt_demo.manifest import CCXT_DEMO_MANIFEST
 from autotrade.core.adapters.manifest import PAPER_MANIFEST
 from autotrade.core.adapters.paper import PaperAdapter
-from autotrade.core.domain.allowlist import AllowlistViolation, D1B_ALLOWLIST
+from autotrade.core.domain.allowlist import D1B_ALLOWLIST, AllowlistViolation
 
 
 def list_builtin_adapters() -> list[dict[str, Any]]:

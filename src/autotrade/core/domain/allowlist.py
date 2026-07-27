@@ -40,7 +40,8 @@ D1B_ALLOWLIST = AllowlistTuple(
 )
 
 # Host fragments that identify Binance Spot DEMO/Testnet (refuse production trading hosts).
-# Includes legacy testnet.binance.vision and current demo-api.binance.com (ccxt enable_demo_trading).
+# Includes legacy testnet.binance.vision and current demo-api.binance.com
+# (the host ccxt switches to under enable_demo_trading).
 TESTNET_HOST_MARKERS: frozenset[str] = frozenset(
     {
         "testnet.binance.vision",

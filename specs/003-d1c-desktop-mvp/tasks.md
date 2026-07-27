@@ -43,13 +43,53 @@ description: "Task list for D1c Desktop MVP (PySide6 + installer)"
 
 ## Phase 2: Foundational UI shell (after T001–T006; still no DEMO E2E gate)
 
-- [ ] T010 Implement MainWindow + navigation shell (empty pages) in `app_ui/`
-- [ ] T011 [P] Tray stub: show/hide main; Quit; Pause hook wired to KillSwitch API (unit with fake KS)
-- [ ] T012 Single-instance guard helper (QLocalServer or win mutex) + unit test on Windows
-- [ ] T013 [P] Read-only DashboardSnapshot builder from existing UoW (no Qt) in `app_ui/services/` or `core` projection module
-- [ ] T014 Wire desktop entrypoint to show MainWindow when `[ui]` installed
+- [x] T010 Implement MainWindow + navigation shell (empty pages) in `app_ui/`
+- [x] T011 [P] Tray stub: show/hide main; Quit; Pause hook wired to KillSwitch API (unit with fake KS)
+- [x] T012 Single-instance guard helper (QLocalServer or win mutex) + unit test on Windows
+- [x] T013 [P] Read-only DashboardSnapshot builder from existing UoW (no Qt) in `app_ui/services/` or `core` projection module
+- [x] T014 Wire desktop entrypoint to show MainWindow when `[ui]` installed
 
-**Checkpoint**: App opens empty shell on Owner machine with `pip install .[ui]`
+**Checkpoint**: App opens empty shell on Owner machine with `pip install .[ui]` — **PASSED**
+(PySide6 6.11.1 / Python 3.14, shell + tray render, `autotrade-desktop --check` exit 0).
+
+**Layering locked in Phase 2** (enforced by `tests/unit/test_ui_import_boundaries.py`):
+
+| Layer | Qt? | Contents |
+|---|---|---|
+| `app_ui/services/` | never | `dashboard` read models, `screens` registry, `single_instance` |
+| `app_ui/controllers/` | never | `tray.TrayController` (Pause, snapshot, tooltip) |
+| `app_ui/views/` | yes, eager | `main_window.MainWindow`, `tray.AppTray` |
+| `entrypoints/desktop.py` | yes, **lazy only** | must stay importable without the extra |
+
+Exit codes: `0` ok · `2` missing `[ui]` extra · `3` another instance
+(mutex `AutoTradeAI.Solo`).
+
+**Fail-closed rules the read model now enforces itself** (QA cycle 2 found both
+fail-OPEN; regression tests in `tests/unit/test_dashboard_snapshot.py`):
+
+- `ActiveAccountView` uses an **allowlist** (`TRADABLE_MODES = {PAPER, DEMO}`).
+  LIVE — or any future/typo'd mode — is never `is_ready`, even with a valid
+  cert, and the banner appends `— MODE NOT PERMITTED`.
+- `is_trading_blocked` includes `not account.is_ready`, so a DEMO account with
+  a missing/revoked cert reads as blocked.
+- `build_live_monitor_page` **always returns every in-flight intent**; `limit`
+  caps only the settled padding, and `truncated` reports what was left out.
+  Silent truncation is forbidden — UNKNOWN must never be paged away.
+
+### Deferred — need an Owner decision, NOT silently patched
+
+- [ ] T015 `autotrade-headless` takes no single-instance lock, so the
+      `AutoTradeAI.Solo` mutex only excludes a second **desktop**, not
+      desktop + headless together. Decide whether the "one trading process"
+      invariant (v1.4) should be enforced by a shared lock, and which process
+      wins. Changing this touches D1a/D1b runtime semantics.
+- [ ] T016 `kill_switch_state` has no unique constraint on `scope`, while
+      `KillSwitch.load/persist` use `.one_or_none()`. Duplicate rows would make
+      tray **Pause** raise `MultipleResultsFound` — the one action that must
+      never fail. Needs a migration + ADR note, not a UI-side try/except.
+- [ ] T017 `order_intents` has no timestamp column and `intent_id` is a random
+      UUID, so the Live Monitor cannot order "most recent first". T041 needs a
+      time column (or an ordered surrogate key) before it can page usefully.
 
 ---
 

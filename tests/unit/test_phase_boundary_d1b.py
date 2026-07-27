@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from autotrade.core.adapters.registry import create_adapter, list_builtin_adapters
-from autotrade.core.domain.allowlist import AllowlistViolation, D1B_ALLOWLIST, assert_allowlisted
+from autotrade.core.domain.allowlist import D1B_ALLOWLIST, AllowlistViolation, assert_allowlisted
 
 
 @pytest.mark.d1b

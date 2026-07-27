@@ -20,6 +20,39 @@ description: "Task list for D1b CCXT DEMO Allowlist implementation"
 - Contract + fault = mock/inject OK; **do not** count toward ≥50.
 - ≥50 lifecycles + ≥72h soak = **real Binance Spot Testnet only**.
 
+## Post-audit fixes
+
+- [x] 2026-07-28 **FR-009 gap**: `core/certify/invalidate.py::invalidate_on_change`
+      (T010's contract, `contracts/certification-evidence.md`'s "Invalidation"
+      section) was correctly implemented and unit-tested but had zero
+      production call sites — and worse, `core/certify/records.py::snapshot_versions`
+      (writes the baseline `app_version`/`ccxt_version`/`endpoint_fingerprint`/
+      `instrument_metadata_hash` a drift check needs to compare against) was
+      also never called outside tests, so even a wired-up drift check would
+      have been a permanent no-op (`invalidate_on_change` only flags a field
+      when the baseline for that field is already truthy). Fixed by adding
+      `records.py::capture_baseline` (calls `snapshot_versions` with
+      `app_version=autotrade.__version__`, `ccxt_version=ccxt.__version__`,
+      `endpoint_fingerprint=D1B_ALLOWLIST.canonical_key`, and
+      `instrument_metadata_hash` = sha256 of the redacted, canonically-sorted
+      adapter `get_capabilities()` dict) and calling it from both
+      `entrypoints/headless.py::_enable_demo` and
+      `app_ui/controllers/broker_hub.py::BrokerHubController.enable_demo`
+      right after `assert_cert_valid_for_trading` passes — best-effort
+      provenance, wrapped so a snapshot failure never blocks or crashes the
+      enable. Added `autotrade-headless cert-check-drift`
+      (`entrypoints/headless.py`) — Owner-schedulable, exit code
+      `EXIT_DRIFT_DETECTED=4` (0/1/2/3 already taken) — that recomputes the
+      same four values and calls `invalidate_on_change(..., reason="")`
+      (verified: a non-empty `reason` invalidates unconditionally regardless
+      of whether anything actually drifted, which would make every
+      invocation report false drift — `reason=""` makes invalidation depend
+      purely on a detected mismatch). A cert with no baseline yet is reported
+      honestly ("no baseline recorded yet"), not as a false "no drift".
+      Documented in `contracts/cli-demo-ops.md` as the 7th CLI op.
+      Tests: `tests/unit/test_headless_entrypoint.py`,
+      `tests/unit/test_broker_hub_controller.py`.
+
 ## Format: `[ID] [P?] [Story?] Description`
 
 - **[P]**: Parallelizable (different files; no unfinished blockers)

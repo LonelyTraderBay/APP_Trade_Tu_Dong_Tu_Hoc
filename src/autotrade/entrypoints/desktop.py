@@ -63,6 +63,18 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         controller = _build_controller()
+
+        # FR-004 gap fix: Startup Recovery (`core/oms/recovery.py`) must run
+        # before the Owner can reach any trading screen, and before --check
+        # reports readiness — otherwise a crash / sleep-resume / interrupted
+        # session could leave MainWindow showing stale/unrecovered state.
+        # Runs synchronously: this is a fast local DB + adapter check, not a
+        # long-running operation, so no splash/progress UI is warranted (none
+        # exists elsewhere in this entrypoint either).
+        from autotrade.app_ui.services.startup import run_desktop_startup_recovery
+
+        recovery = run_desktop_startup_recovery(controller.uow)
+
         if check_only:
             try:
                 banner = controller.snapshot().account.banner
@@ -70,12 +82,12 @@ def main(argv: list[str] | None = None) -> int:
                 banner = f"session unavailable ({type(exc).__name__})"
             print(f"autotrade-desktop: ready — {banner}")
             return EXIT_OK
-        return _run_gui(controller)
+        return _run_gui(controller, recovery)
     finally:
         guard.release()
 
 
-def _run_gui(controller) -> int:  # noqa: ANN001 - TrayController, Qt-free import above
+def _run_gui(controller, recovery=None) -> int:  # noqa: ANN001 - TrayController, RecoveryResult | None; Qt-free import above
     from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
     from autotrade.app_ui.views.main_window import MainWindow
@@ -86,6 +98,16 @@ def _run_gui(controller) -> int:  # noqa: ANN001 - TrayController, Qt-free impor
     app.setQuitOnLastWindowClosed(False)
 
     window = MainWindow(controller)
+    if recovery is not None and not recovery.ready:
+        # Startup Recovery locked the account this session. The Dashboard
+        # banner reads `Account.status` from the DB, which the (ephemeral,
+        # in-process) AccountGate never rewrites — so without this the shell
+        # would silently look fine despite being locked. The status bar is
+        # the minimal, non-interrupting surface for it (no new modal/dialog,
+        # same as any other SAFE_LOCK/blocked state elsewhere in this app).
+        window.statusBar().showMessage(
+            "Startup Recovery locked this account — " + "; ".join(recovery.reasons)
+        )
     window.show()
 
     if QSystemTrayIcon.isSystemTrayAvailable():

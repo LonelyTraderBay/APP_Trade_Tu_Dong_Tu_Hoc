@@ -208,6 +208,205 @@ def test_backup_button_calls_snapshot_database_and_shows_the_result_path(
         page.deleteLater()
 
 
+# --- Restore (FR-005) ---------------------------------------------------------
+
+
+@pytest.mark.d1c
+def test_restore_confirm_no_is_a_hard_noop(
+    qapp, migrated_uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    """Answering No to the required confirm dialog must not touch the
+    database at all — same idiom as Kill-switch's Flatten "No" test."""
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from autotrade.app_ui.controllers.settings import SettingsController
+    from autotrade.app_ui.views.settings_page import SettingsPage
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: ("C:/fake/backup.sqlite3", "")),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.No),
+    )
+
+    calls: list[object] = []
+    monkeypatch.setattr(
+        SettingsController,
+        "run_restore",
+        lambda self, *a, **k: calls.append((a, k)),
+    )
+
+    page = SettingsPage(SettingsController(migrated_uow))
+    try:
+        page.restore_button.click()
+
+        assert calls == []
+        assert page.restore_result_label.text() == ""
+    finally:
+        page.deleteLater()
+
+
+@pytest.mark.d1c
+def test_restore_file_dialog_cancel_is_a_hard_noop(
+    qapp, migrated_uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    """Cancelling the file picker (empty path) must never even show the
+    confirm dialog, let alone call the controller."""
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from autotrade.app_ui.controllers.settings import SettingsController
+    from autotrade.app_ui.views.settings_page import SettingsPage
+
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", ""))
+    )
+    questions: list[object] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: questions.append(1) or QMessageBox.StandardButton.Yes),
+    )
+
+    page = SettingsPage(SettingsController(migrated_uow))
+    try:
+        page.restore_button.click()
+
+        assert questions == []
+        assert page.restore_result_label.text() == ""
+    finally:
+        page.deleteLater()
+
+
+@pytest.mark.d1c
+def test_restore_confirm_yes_overwrites_the_default_db_and_shows_restart_message(
+    qapp, migrated_uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    """End-to-end through the real UI + real controller + real
+    `restore_database`, against `default_db_path()` — the exact same file
+    `migrated_uow`'s own live SQLAlchemy engine already has open (idle,
+    pooled). This exercises the realistic "restore from inside the running
+    app" scenario, including the in-place-overwrite fallback
+    `restore_database` uses when a plain `Path.replace` would raise
+    `PermissionError` on Windows for that reason."""
+    import sqlite3
+
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from autotrade.app_ui.controllers.settings import SettingsController
+    from autotrade.app_ui.views.settings_page import SettingsPage
+    from autotrade.persistence.backup import snapshot_database
+    from autotrade.persistence.engine import default_db_path
+
+    db_path = default_db_path()  # migrated_uow already created + migrated this
+    marker_key = "restore_ui_marker"
+
+    def _seed(value: str) -> None:
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (marker_key,))
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)", (marker_key, value)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _read() -> str | None:
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (marker_key,)
+            ).fetchone()
+        finally:
+            conn.close()
+        return row[0] if row else None
+
+    _seed("original")
+    backup_file = snapshot_database(db_path, db_path.parent / "backups")  # captures "original"
+
+    _seed("changed-after-backup")
+    assert _read() == "changed-after-backup"
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: (str(backup_file), "")),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+    infos: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        staticmethod(lambda parent, title, text: infos.append((title, text))),
+    )
+
+    page = SettingsPage(SettingsController(migrated_uow))
+    try:
+        page.restore_button.click()
+
+        assert len(infos) == 1
+        assert "restart" in page.restore_result_label.text().lower()
+        assert _read() == "original"  # overwritten back to the backup's content
+    finally:
+        page.deleteLater()
+
+
+@pytest.mark.d1c
+def test_restore_confirm_yes_with_incompatible_backup_shows_warning(
+    qapp, migrated_uow: UnitOfWork, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    import sqlite3
+
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from autotrade.app_ui.controllers.settings import SettingsController
+    from autotrade.app_ui.views.settings_page import SettingsPage
+    from autotrade.persistence.engine import default_db_path
+
+    bogus_backup = default_db_path().parent / "bogus.sqlite3"
+    conn = sqlite3.connect(bogus_backup)
+    try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES ('bogus_old_rev')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: (str(bogus_backup), "")),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+    warnings_shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda parent, title, text: warnings_shown.append((title, text))),
+    )
+
+    page = SettingsPage(SettingsController(migrated_uow))
+    try:
+        page.restore_button.click()
+
+        assert len(warnings_shown) == 1
+        assert "schema" in page.restore_result_label.text().lower()
+    finally:
+        page.deleteLater()
+
+
 # --- Autostart (T053) ---------------------------------------------------------
 
 

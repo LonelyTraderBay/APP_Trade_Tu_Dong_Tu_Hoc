@@ -17,6 +17,18 @@ Exit codes:
   1  a run-lifecycles/run-soak invocation completed but failed its gate
   2  operation refused (bad precondition, connection/cert failure, etc.)
   3  another instance already holds the single-instance lock (EXIT_ALREADY_RUNNING)
+  4  cert-check-drift detected drift and invalidated the certification
+     record (EXIT_DRIFT_DETECTED)
+
+`cancel-intent` reuses exit code 2 (generic refusal) for every failure mode
+— unknown intent, wrong state to cancel from, and an adapter-side
+CANCEL_UNKNOWN all print a clear reason to stderr and exit 2. A distinct
+code was considered and rejected: unlike `run-lifecycles`/`run-soak` (exit 1
+for "ran to completion but failed its gate") or `cert-check-drift` (exit 4
+for a specific, actionable follow-up), a cancel refusal has no follow-up
+action distinct from "read stderr, decide what to do" — so it shares 2 with
+every other precondition/refusal case in this file (`switch-account`,
+`enable-demo`, ...).
 """
 
 from __future__ import annotations
@@ -28,6 +40,7 @@ import sys
 from typing import Any
 
 EXIT_ALREADY_RUNNING = 3
+EXIT_DRIFT_DETECTED = 4
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("cert-mark-contract", help="Mark DEMO contract suite passed")
     sub.add_parser("cert-mark-fault", help="Mark DEMO fault suite passed")
     sub.add_parser("cert-status", help="Print certification gates (redacted)")
+    sub.add_parser(
+        "cert-check-drift",
+        help="Compare current ccxt/endpoint/instrument/app versions against the "
+        "recorded baseline; invalidate cert on drift (FR-009)",
+    )
     p_life = sub.add_parser(
         "run-lifecycles",
         help="Run DEMO round-trip lifecycles (requires AUTOTRADE_D1B_REAL=1)",
@@ -81,6 +99,11 @@ def main(argv: list[str] | None = None) -> int:
     p_abort = sub.add_parser("soak-abort", help="Owner-pause active soak (fails continuous gate)")
     p_abort.add_argument("--soak-id", default=None)
     p_abort.add_argument("--account-id", default="demo-binance")
+    p_cancel = sub.add_parser(
+        "cancel-intent",
+        help="Cancel an ACKNOWLEDGED order intent (PAPER or DEMO, by account mode)",
+    )
+    p_cancel.add_argument("--intent-id", required=True)
 
     args = parser.parse_args(argv)
 
@@ -145,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cert_mark("fault")
         if args.cmd == "cert-status":
             return _cert_status()
+        if args.cmd == "cert-check-drift":
+            return _cert_check_drift()
         if args.cmd == "run-lifecycles":
             return _run_lifecycles(account_id=args.account_id, count=args.count)
         if args.cmd == "run-soak":
@@ -157,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
             return _soak_status()
         if args.cmd == "soak-abort":
             return _soak_abort(account_id=args.account_id, soak_id=args.soak_id)
+        if args.cmd == "cancel-intent":
+            return _cancel_intent(args.intent_id)
 
         print(
             "autotrade-headless: ready (no HTTP). "
@@ -252,6 +279,19 @@ def _enable_demo(account_id: str) -> int:
         except CertificationNotValid as exc:
             print(f"refused: {exc}", file=sys.stderr)
             return 2
+
+        # FR-009 baseline capture — best-effort provenance, not a new gate.
+        # The cert gate above already passed; a snapshot failure here must
+        # never refuse or crash the enable.
+        try:
+            from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter
+            from autotrade.core.certify.records import capture_baseline
+
+            adapter = CcxtDemoAdapter(endpoint="binance_spot_testnet")
+            capture_baseline(session, capability=adapter.get_capabilities())
+        except Exception as exc:  # noqa: BLE001 - best-effort, must not block enable
+            print(f"cert baseline snapshot skipped: {exc}", file=sys.stderr)
+
         acc = session.get(Account, account_id)
         if acc is None:
             acc = Account(
@@ -386,6 +426,83 @@ def _cert_status() -> int:
     return 0
 
 
+def _cert_check_drift() -> int:
+    """FR-009 drift check: compare current ccxt/endpoint/instrument/app
+    versions against the baseline recorded by `cert.capture_baseline`
+    (established the first time `enable-demo` succeeds) and invalidate the
+    certification record if anything drifted. Owner-schedulable (cron/Task
+    Scheduler) via `EXIT_DRIFT_DETECTED`.
+
+    Note on `invalidate_on_change`'s `reason` argument: an empty string is
+    passed deliberately (verified against `core/certify/invalidate.py`) —
+    a *non-empty* `reason` makes that function invalidate unconditionally
+    (`if detected or reason:`), which would report drift on every single
+    invocation, even a completely clean one. An empty reason makes the
+    actual invalidation depend purely on a detected mismatch, which is what
+    a drift *check* is supposed to do.
+
+    The `detected` list below mirrors `invalidate_on_change`'s own
+    field-by-field comparison, recomputed here only for accurate reporting —
+    reading `cert.invalidated_reason` back after the call is not enough on
+    its own, since that field can already be non-empty/valid=False for a
+    reason unrelated to this run (e.g. gates re-run and failed since the
+    baseline was captured), which would make an unqualified read misreport
+    "drift" on a clean run.
+    """
+    from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter
+    from autotrade.core.certify import records as cert_records
+    from autotrade.core.certify.invalidate import invalidate_on_change
+
+    with _uow().session() as session:
+        baseline = cert_records.get_cert(session)
+        if baseline is None or not baseline.ccxt_version:
+            print(
+                "cert-check-drift: no baseline recorded yet "
+                "(enable DEMO at least once to establish one)"
+            )
+            return 0
+
+        adapter = CcxtDemoAdapter(endpoint="binance_spot_testnet")
+        current = cert_records.current_version_snapshot(adapter.get_capabilities())
+
+        detected: list[str] = []
+        if baseline.ccxt_version and current["ccxt_version"] != baseline.ccxt_version:
+            detected.append("ccxt_version_changed")
+        if (
+            baseline.endpoint_fingerprint
+            and current["endpoint_fingerprint"] != baseline.endpoint_fingerprint
+        ):
+            detected.append("endpoint_fingerprint_changed")
+        if (
+            baseline.instrument_metadata_hash
+            and current["instrument_metadata_hash"] != baseline.instrument_metadata_hash
+        ):
+            detected.append("instrument_metadata_changed")
+        if baseline.app_version and current["app_version"] != baseline.app_version:
+            detected.append("app_version_changed")
+
+        invalidate_on_change(
+            session,
+            reason="",
+            current_ccxt=current["ccxt_version"],
+            current_endpoint_fp=current["endpoint_fingerprint"],
+            current_instrument_hash=current["instrument_metadata_hash"],
+            current_app=current["app_version"],
+        )
+        row = cert_records.get_cert(session)
+        valid = bool(row.valid) if row else False
+
+    if detected:
+        print(
+            f"cert-check-drift: DRIFT DETECTED cert.valid={valid} "
+            f"reasons={'+'.join(detected)}"
+        )
+        return EXIT_DRIFT_DETECTED
+
+    print(f"cert-check-drift: no drift detected, cert.valid={valid}")
+    return 0
+
+
 def _run_lifecycles(*, account_id: str, count: int | None) -> int:
     from autotrade.core.certify.real_lifecycles import (
         build_real_adapter,
@@ -487,6 +604,65 @@ def _soak_abort(*, account_id: str, soak_id: str | None) -> int:
         print(f"soak not found: {sid}", file=sys.stderr)
         return 2
     print(f"soak-aborted id={row.soak_id} owner_paused=True passed=False")
+    return 0
+
+
+def _cancel_intent(intent_id: str) -> int:
+    """Cancel an ACKNOWLEDGED order intent.
+
+    The adapter is chosen from the intent's own account mode (PAPER vs.
+    DEMO) — same construction each mode already uses elsewhere in this file
+    (`_switch_account` for PAPER, `_demo_test_connection` for DEMO/ccxt).
+
+    Note (PAPER limitation, inherent to `PaperAdapter` — not something this
+    command works around): `PaperAdapter` keeps its order book in-process
+    memory only, never persisted. A PAPER cancel issued from a fresh
+    headless invocation therefore only succeeds if it targets an order
+    placed earlier in *this same process* (as the fault-injection tests
+    do); against a genuinely separate process it will honestly resolve to
+    CANCEL_UNKNOWN via the adapter's `NOT_FOUND` response, never a false
+    "canceled". DEMO/ccxt orders live on the broker, so this limitation
+    does not apply there.
+    """
+    from autotrade.core.oms.cancel import cancel_intent
+    from autotrade.persistence.models import Account, OrderIntent
+
+    uow = _uow()
+    with uow.session() as session:
+        intent = session.get(OrderIntent, intent_id)
+        if intent is None:
+            print(f"cancel-intent refused: unknown intent {intent_id}", file=sys.stderr)
+            return 2
+        account = session.get(Account, intent.account_id)
+    mode = account.mode if account is not None else "PAPER"
+
+    if mode == "DEMO":
+        import os
+
+        from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter, FakeCcxtExchange
+
+        if os.environ.get("AUTOTRADE_D1B_REAL") == "1":
+            key, secret = _load_demo_creds(account.account_id if account else "demo-binance")
+            adapter = CcxtDemoAdapter(
+                api_key=key, api_secret=secret, endpoint="binance_spot_testnet"
+            )
+        else:
+            adapter = CcxtDemoAdapter(exchange=FakeCcxtExchange(), endpoint="binance_spot_testnet")
+    else:
+        from autotrade.core.adapters.paper import PaperAdapter
+
+        adapter = PaperAdapter()
+    adapter.connect()
+
+    result = cancel_intent(uow, adapter, intent_id=intent_id)
+    if not result.ok:
+        print(
+            f"cancel-intent refused: intent={intent_id} state={result.state} "
+            f"error={result.error}",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"cancel-intent ok intent_id={intent_id} state={result.state}")
     return 0
 
 

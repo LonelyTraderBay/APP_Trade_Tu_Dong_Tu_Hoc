@@ -171,11 +171,121 @@ description: "Task list for D1a Paper Core implementation"
 - [x] T064 [P] Add seeded Paper replay determinism test (bit-for-bit fills/balances) in `tests/integration/test_paper_replay_seed.py`
 - [x] T065 [P] Add fault test partial fill during protection create/update → qty sync or L3/lock in `tests/fault/test_partial_fill_protection.py`
 - [x] T066 [P] Add fault test cancel timeout + late fill → `CANCEL_UNKNOWN`, single fill ingest in `tests/fault/test_cancel_unknown_late_fill.py`
+  - **Post-audit fix (gap)**: T066's test was tautological — it never called
+    `cancel_order`, just asserted a local variable equaled itself. There was
+    no production code anywhere driving `IntentState.CANCEL_REQUESTED` /
+    `CANCEL_UNKNOWN` at all (both are legal FSM states, both adapters'
+    `cancel_order()` already existed and worked, but had zero callers
+    outside their own contract tests) — this codebase had no way to cancel
+    a live order. Fixed by adding `core/oms/cancel.py::cancel_intent`
+    (mirrors `submit.py::DurableSubmitter`'s crash-safety discipline:
+    commit `CANCEL_REQUESTED` before the adapter call; on an adapter
+    exception after it was invoked, mark `CANCEL_UNKNOWN` and never
+    blind-retry — resolution is deferred to a later query/recon, exactly
+    like a plain `UNKNOWN` submit intent). Investigated whether a
+    successfully-canceled order should land in `IntentState.REJECTED`
+    (only pre-existing terminal-ish option) — decided no: `REJECTED` means
+    "the broker refused the order attempt" everywhere else in this FSM, and
+    conflating an intentional, successful cancel with that would
+    misclassify it in any future reporting that treats `REJECTED` as a
+    failure signal. Added a new terminal `IntentState.CANCELED` instead
+    (`core/oms/fsm.py` — additive `StrEnum` value + one FSM transition
+    entry; the `state` column is a plain `String`, no migration needed).
+    Wired a minimal, honest CLI caller — `autotrade-headless cancel-intent
+    --intent-id <id>` (`entrypoints/headless.py`) — no new UI affordance
+    (out of scope; see `specs/003-d1c-desktop-mvp/tasks.md` Post-audit
+    fixes T073 for the cross-reference). Confirmed `Live Monitor`'s
+    `INFLIGHT_INTENT_STATES` (`app_ui/services/dashboard.py`) already
+    included `CANCEL_UNKNOWN`, so no UI change was needed for it to keep
+    surfacing correctly. `cancel_intent` never touches `RiskEngine` — by
+    the time an intent reaches `ACKNOWLEDGED` (the only legal state to
+    cancel from), `resolve_unknown` has already released its risk
+    reservation. T066's test file was rewritten to actually drive
+    `cancel_intent` through the fault path (adapter raises after being
+    called → `CANCEL_UNKNOWN`, asserted exactly-once call count) plus the
+    late-fill half (`ingest_fill` accepts a fill for an intent mid-cancel
+    without raising and without silently resolving the intent's state).
+    Investigated generalizing `oms/unknown.py::resolve_unknown` for
+    `CANCEL_UNKNOWN` resolution too; decided against forcing it — no
+    existing caller (recon/startup) invokes `resolve_unknown` at all today,
+    and the "found, not yet filled" branch's target state (`ACKNOWLEDGED`)
+    has no FSM-legal equivalent for `CANCEL_UNKNOWN` (which the FSM only
+    allows to resolve to `FILLED`/`CANCELED`/`REJECTED`) — the state shapes
+    genuinely differ, so a dedicated resolver is a better fit for a future
+    task than bending this one.
 - [x] T067 [P] Add fault test duplicate/out-of-order executions → unique fill, no state regression in `tests/fault/test_dup_out_of_order_fills.py`
 - [x] T068 [P] Add fault test Paper auth/disconnect injection → no new exposure-increasing entry; recon lane prioritized in `tests/fault/test_disconnect_no_entry.py`
 - [x] T069 [P] Add fault test stale quote/account/instrument → no exposure increase + notify stale correctly in `tests/fault/test_stale_fail_closed.py`
 - [x] T070 [P] Add fault test disk full/DB busy/corrupt/migration fail → SAFE_LOCK, no new submit in `tests/fault/test_disk_safe_lock.py`
 - [x] T071 [P] Add fault test sleep/resume or wall-clock jump → refresh + recovery subset before trade in `tests/fault/test_clock_jump_recovery.py`
+  - **Post-audit fix (gap)**: ADR-D12 (clock-skew/monotonic timeout) had
+    zero real logic — `core/domain/clock.py`'s `ClockPort`/`FrozenClock`
+    were unused outside their own module and this test, and T071's test was
+    tautological: it built a `FrozenClock`, called `.advance_mono(3600)`,
+    then called `run_startup_recovery(...)` — which takes no clock
+    parameter at all, so the advance had zero effect on the function under
+    test. Fixed by adding real detection logic and wiring it into the
+    desktop's Startup Recovery gate. Design constraint that shaped
+    everything: `time.monotonic()`'s reference point is arbitrary per
+    process and resets on every restart, so a monotonic value written by a
+    previous process run is meaningless to a new one — it can only ever be
+    compared within the SAME process's lifetime. That splits detection into
+    two genuinely different checks, both implemented in new
+    `core/domain/clock.py::detect_clock_jump(clock, *, last_wall, last_mono,
+    threshold_seconds=300.0) -> ClockJumpResult`:
+    (1) **backward wall-clock** — cross-restart-safe, since it only ever
+    compares two absolute UTC `Instant`s: `now_utc < last_wall` proves the
+    clock was set backward (or is otherwise unreliable) since `last_wall`
+    was recorded, regardless of which process wrote it. A large *forward*
+    wall-clock gap alone is deliberately NOT flagged — the app being closed
+    for a long time is normal, not a fault; and
+    (2) **monotonic-vs-wall divergence** — same-process only (documented as
+    the caller's precondition: `last_mono` must come from the same
+    `ClockPort`/process as `clock`), comparing `wall_delta` against
+    `mono_delta` between two same-process checkpoints — `monotonic()` does
+    not advance during OS sleep/hibernate while wall-clock keeps ticking, so
+    a `wall_delta` exceeding `mono_delta` by more than `threshold_seconds`
+    (default 300s / 5 min, matching this task's own ADR example) is the
+    sleep/resume signature. Wired the cross-restart half (the only one
+    testable end-to-end without a running process) into
+    `app_ui/services/startup.py::run_desktop_startup_recovery`: reads a
+    wall-clock checkpoint persisted via the generic `app_settings` table
+    (new `app_ui/services/clock_checkpoint.py::read_last_wall_checkpoint`/
+    `write_wall_checkpoint`, same `AppSetting` reuse pattern as
+    `app_ui/services/settings.py`'s autostart preference — no new
+    migration), calls `detect_clock_jump` with `last_mono=None` (a fresh
+    process has no same-process monotonic baseline yet), and on a detected
+    jump locks the `AccountGate` through the same `gate.lock(...)` path
+    `run_startup_recovery` already uses for its own reasons — even
+    overriding an otherwise-READY result, since this must never silently
+    trade through a suspicious clock state. The checkpoint is written back
+    only after a fully successful (non-locked) recovery, so a locked/failed
+    launch never overwrites the last known-good checkpoint with a bad one.
+    Honest scope limit: true intra-session sleep/resume detection (check 2)
+    needs a periodic same-process recheck while the app runs; no such loop
+    exists yet (`entrypoints/desktop.py` only runs Startup Recovery once, at
+    launch). Evaluated adding a `QTimer` in `MainWindow` to provide that
+    second checkpoint (would be the first `QTimer` anywhere in this
+    codebase — grepped `src/autotrade/app_ui/` for precedent, none exists)
+    and scoped it OUT: it would need to also re-lock a *running* session
+    (banner refresh, blocking further trading action mid-session), which is
+    materially more surface than this fix's blast radius warrants on its
+    own. `detect_clock_jump`'s check 2 is fully implemented and unit-tested
+    (`tests/fault/test_clock_jump_recovery.py`) so wiring a periodic caller
+    is a follow-up, not a rewrite. T071's test file was rewritten from
+    scratch: five `d1a` unit tests drive `detect_clock_jump` directly via
+    `FrozenClock` (no checkpoint → no jump; backward wall-clock → jumped;
+    large forward gap alone → not jumped; monotonic divergence over
+    threshold → jumped; under threshold → not jumped), plus `d1c` tests
+    proving the checkpoint helpers round-trip through a real DB and that
+    `run_desktop_startup_recovery` actually locks the account (with a
+    `clock_skew_backward:` reason) when a persisted checkpoint is ahead of
+    the real wall clock, and does not overwrite a good checkpoint on a
+    locked launch. See `specs/003-d1c-desktop-mvp/tasks.md` Post-audit fixes
+    T074 for the cross-reference (this is a D1a-scoped fix; the desktop
+    wiring lands in D1c files only because that's where
+    `run_desktop_startup_recovery` already lives, same split as T066/T073's
+    cancel-path precedent).
 - [x] T072 Add pytest marker `d1a` on all D1a fault/integration exit tests + evidence report hook (versions/seed/config/results) in `tests/conftest.py`
 - [x] T073 Document Evidence cell fill instructions for D1a rows in `docs/mvp-capability-matrix.md` (leave Evidence blank until runs produce artifacts)
 - [x] T074 Run `ruff check src tests` and `pytest -m d1a` (unit/contract/integration/fault marked d1a); store report under gitignored evidence path

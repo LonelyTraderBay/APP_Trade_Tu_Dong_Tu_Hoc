@@ -16,6 +16,14 @@ class IntentState(StrEnum):
     UNKNOWN = "UNKNOWN"
     CANCEL_REQUESTED = "CANCEL_REQUESTED"
     CANCEL_UNKNOWN = "CANCEL_UNKNOWN"
+    #: A cancel that the broker confirmed took effect (order is terminal and
+    #: inert, no exposure). Deliberately distinct from `REJECTED`, which
+    #: means "the broker refused the order attempt" elsewhere in this
+    #: codebase (see `submit.py`) — conflating an intentional, successful
+    #: cancel with a broker rejection would misclassify it in any future
+    #: reporting that counts `REJECTED` as a failure. See `cancel.py` module
+    #: docstring for the full justification.
+    CANCELED = "CANCELED"
 
 
 class DeliveryCertainty(StrEnum):
@@ -42,17 +50,23 @@ _ALLOWED: dict[IntentState, frozenset[IntentState]] = {
         {IntentState.FILLED, IntentState.CANCEL_REQUESTED, IntentState.REJECTED}
     ),
     IntentState.CANCEL_REQUESTED: frozenset(
-        {IntentState.FILLED, IntentState.CANCEL_UNKNOWN, IntentState.REJECTED}
+        {
+            IntentState.FILLED,
+            IntentState.CANCELED,
+            IntentState.CANCEL_UNKNOWN,
+            IntentState.REJECTED,
+        }
     ),
     IntentState.UNKNOWN: frozenset(
         {IntentState.FILLED, IntentState.REJECTED, IntentState.ACKNOWLEDGED}
     ),
     IntentState.CANCEL_UNKNOWN: frozenset(
-        {IntentState.FILLED, IntentState.REJECTED}
+        {IntentState.FILLED, IntentState.CANCELED, IntentState.REJECTED}
     ),
     IntentState.RISK_REJECTED: frozenset(),
     IntentState.FILLED: frozenset(),
     IntentState.REJECTED: frozenset(),
+    IntentState.CANCELED: frozenset(),
 }
 
 

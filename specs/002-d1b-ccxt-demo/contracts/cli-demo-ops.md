@@ -18,6 +18,7 @@ Owner-operated attended surface without PySide6 Broker Hub.
 | Disable DEMO | none | Stops DEMO trading READY; does not delete cert |
 | Switch account | `paper` \| `demo` | Enforces [account-switch.md](./account-switch.md) |
 | Status | none | Active mode, cert validity, KS, unresolved recon summary |
+| Check certification drift | none | Compares current `ccxt`/endpoint/instrument/app versions against the baseline recorded when DEMO was enabled ([certification-evidence.md](./certification-evidence.md) invalidation rule, spec FR-009); invalidates cert on drift, exits non-zero so it is Owner-schedulable |
 
 ## Non-goals
 
@@ -35,3 +36,7 @@ Owner-operated attended surface without PySide6 Broker Hub.
 - Test connection fails closed on wrong endpoint/mode
 - Enable without cert → refused
 - Status redacts secrets
+- Check certification drift: no drift when nothing changed since baseline; drift
+  detected (and cert invalidated) when `ccxt`/endpoint/instrument/app version
+  differs from the recorded baseline; no baseline yet (never enabled) reported
+  honestly, not as a false "no drift"

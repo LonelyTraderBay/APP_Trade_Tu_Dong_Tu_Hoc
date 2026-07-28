@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from autotrade.core.adapters.paper import PaperAdapter
 from autotrade.core.domain.money import d
 from autotrade.core.oms.account_state import AccountGate, AccountStatus
 from autotrade.core.oms.protection import sync_protection
 
 
+@pytest.mark.d1a
 def test_protection_ok_and_failure_locks() -> None:
     adapter = PaperAdapter()
     adapter.connect()

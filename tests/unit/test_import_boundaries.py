@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 FORBIDDEN = {"ccxt", "MetaTrader5", "metatrader5"}
 PACKAGES = [
     Path("src/autotrade/core/strategy"),
@@ -25,6 +27,7 @@ def _imports(path: Path) -> set[str]:
     return found
 
 
+@pytest.mark.d1a
 def test_no_venue_sdk_imports() -> None:
     offenders: list[str] = []
     for package in PACKAGES:

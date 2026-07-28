@@ -13,13 +13,20 @@ under `tmp_path`, and `AUTOTRADE_DATA_DIR` is monkeypatched before every
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
 
-from autotrade.persistence.backup import restore_database, snapshot_database
+from autotrade.persistence.backup import (
+    DEFAULT_BACKUP_RETENTION,
+    list_backups,
+    restore_database,
+    rotate_backups,
+    snapshot_database,
+)
 
 _ALEMBIC_INI = Path("src/autotrade/persistence/alembic.ini")
 _ALEMBIC_SCRIPTS = Path("src/autotrade/persistence/alembic")
@@ -230,3 +237,118 @@ def test_restore_succeeds_when_target_is_held_open_by_a_live_engine(
         assert _integrity_ok(target_db) is True
     finally:
         live_engine.dispose()
+
+
+# --- retention rotation (ADR-D03: "giữ mặc định 7 bản") ------------------------
+
+
+def _make_backup_file(backup_dir: Path, stamp: str) -> Path:
+    """A dummy backup file named exactly like `snapshot_database` writes,
+    without needing a real sqlite DB — `rotate_backups`/`list_backups` only
+    ever look at the filename, never the content, so this is enough to
+    exercise rotation without real wall-clock timing between files."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    path = backup_dir / f"autotrade-{stamp}.sqlite3"
+    path.write_bytes(b"not a real sqlite file - only the filename matters here")
+    return path
+
+
+@pytest.mark.d1c
+def test_rotate_backups_keeps_newest_n_and_deletes_the_rest(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    stamps = [f"2026010{i}T000000Z" for i in range(1, 10)]  # 9 distinct days
+    paths = [_make_backup_file(backup_dir, s) for s in stamps]
+
+    deleted = rotate_backups(backup_dir, keep=7)
+
+    assert len(deleted) == 2
+    remaining = {p.name for p in backup_dir.iterdir()}
+    # the 2 oldest (2026-01-01, 2026-01-02) must be gone
+    assert paths[0].name not in remaining
+    assert paths[1].name not in remaining
+    # the 7 newest must remain
+    for p in paths[2:]:
+        assert p.name in remaining
+    assert len(remaining) == 7
+
+
+@pytest.mark.d1c
+def test_rotate_backups_with_fewer_than_keep_deletes_nothing(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    for i in range(1, 4):
+        _make_backup_file(backup_dir, f"2026010{i}T000000Z")
+
+    deleted = rotate_backups(backup_dir, keep=7)
+
+    assert deleted == []
+    assert len(list(backup_dir.iterdir())) == 3
+
+
+@pytest.mark.d1c
+def test_rotate_backups_ignores_non_backup_files(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir(parents=True)
+    kept_older, kept_newer = (
+        _make_backup_file(backup_dir, f"2026010{i}T000000Z") for i in (1, 2)
+    )
+    tmp_file = backup_dir / "autotrade-20260103T000000Z.sqlite3.tmp"
+    tmp_file.write_bytes(b"mid-write, must never be touched")
+    unrelated = backup_dir / "notes.txt"
+    unrelated.write_text("unrelated file, must never be touched")
+
+    deleted = rotate_backups(backup_dir, keep=1)
+
+    # only 2 real backups exist -> the older one is rotated away, the
+    # `.tmp` file and the unrelated file are never candidates at all.
+    assert deleted == [kept_older]
+    assert not kept_older.exists()
+    assert kept_newer.exists()
+    assert tmp_file.exists()
+    assert unrelated.exists()
+
+
+@pytest.mark.d1c
+def test_rotate_backups_skips_a_file_that_fails_to_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A delete failure on one stale file (permission error, concurrent
+    removal, ...) must not raise into the caller and must not prevent the
+    other stale files from being cleaned up."""
+    backup_dir = tmp_path / "backups"
+    stamps = [f"2026010{i}T000000Z" for i in range(1, 4)]
+    oldest, middle, newest = (_make_backup_file(backup_dir, s) for s in stamps)
+
+    real_unlink = Path.unlink
+
+    def flaky_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name == middle.name:
+            raise PermissionError("simulated permission error")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    # keep=1 -> both `oldest` and `middle` are stale; `middle` fails to delete.
+    deleted = rotate_backups(backup_dir, keep=1)
+
+    assert deleted == [oldest]
+    assert not oldest.exists()
+    assert middle.exists()  # failed to delete, still there
+    assert newest.exists()  # newest, never a rotation candidate
+
+
+# --- snapshot_database end-to-end rotation --------------------------------------
+
+
+@pytest.mark.d1c
+def test_snapshot_database_triggers_rotation_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alembic_cfg: Config
+) -> None:
+    src = _migrated_db(tmp_path / "src", monkeypatch, alembic_cfg)
+    backup_dir = tmp_path / "backups"
+
+    for i in range(9):
+        moment = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=i)
+        snapshot_database(src, backup_dir, now=moment)
+
+    remaining = list_backups(backup_dir)
+    assert len(remaining) == DEFAULT_BACKUP_RETENTION == 7

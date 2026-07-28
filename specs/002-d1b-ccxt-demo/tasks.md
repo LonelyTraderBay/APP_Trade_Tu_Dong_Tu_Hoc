@@ -270,6 +270,7 @@ T030 + T031 with AUTOTRADE_D1B_REAL=1
 - Never commit API keys, tokens, or Chat IDs
 - Do not weaken UNKNOWN/Risk/OMS to “make CCXT easier”
 - Real network tests default **skip** without `AUTOTRADE_D1B_REAL=1`
+- 2026-07-28: audit found `ccxt-demo-adapter.md`'s fault-injection obligations "duplicate/out-of-order executions" and "pagination beyond one page" untested through `CcxtDemoAdapter`/`FakeCcxtExchange` specifically (dedup was only proven generically via D1a's `test_dup_out_of_order_fills.py`). Added `tests/fault/test_ccxt_demo_dup_out_of_order_fills.py` (dedup/out-of-order through the real `adapter.list_executions()` → `recon.reconcile()` → `ingest_fill()` path, incl. a repeated-recon-pass idempotency check) and `tests/contract/test_ccxt_demo_pagination.py` (T016's pagination obligation, seeding >1 page of open orders). **Bug found, not fixed (test-only task scope)**: `CcxtDemoAdapter.list_open_orders` accepts `page` but never uses it to offset the slice — every page returns `opens[:page_size]`, so page 2+ duplicates page 1 instead of returning the remainder, and `has_more`/`done` never advance past page 1's values. The new pagination test encodes the contract-correct behavior and is marked `xfail(strict=True)` documenting this defect; `list_open_orders` in `src/autotrade/core/adapters/ccxt_demo/adapter.py` needs an owner-triaged fix (add `offset = (page-1)*page_size` and slice `opens[offset:offset+page_size]`, and compute `has_more`/`done` from `offset+page_size` vs `len(opens)`). `pytest -m d1b` stays green (xfailed, not failed).
 
 ---
 

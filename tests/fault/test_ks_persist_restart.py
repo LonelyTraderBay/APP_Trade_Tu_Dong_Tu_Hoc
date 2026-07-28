@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 
@@ -12,6 +13,7 @@ from autotrade.persistence.engine import create_sqlite_engine
 from autotrade.persistence.uow import UnitOfWork
 
 
+@pytest.mark.d1a
 def test_ks_persist_restart(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     data_dir = tmp_path / "data"
     data_dir.mkdir()

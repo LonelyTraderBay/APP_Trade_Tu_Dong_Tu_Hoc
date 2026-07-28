@@ -51,6 +51,7 @@ def migrated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return data_dir / "autotrade.sqlite3"
 
 
+@pytest.mark.d1a
 def test_adr_d03_1_tables_exist_and_no_ai(migrated_db: Path) -> None:
     engine = create_engine(f"sqlite:///{migrated_db.as_posix()}")
     tables = set(inspect(engine).get_table_names())

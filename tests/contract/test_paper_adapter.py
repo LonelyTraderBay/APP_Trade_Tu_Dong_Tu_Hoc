@@ -17,6 +17,7 @@ def paper() -> PaperAdapter:
     return adapter
 
 
+@pytest.mark.d1a
 def test_place_full_fill_and_client_id_lookup(paper: PaperAdapter) -> None:
     order = paper.place_order(
         client_order_id="c1",
@@ -36,6 +37,7 @@ def test_place_full_fill_and_client_id_lookup(paper: PaperAdapter) -> None:
     assert paper.query_order_by_client_id("c1") == order
 
 
+@pytest.mark.d1a
 def test_pagination_and_executions(paper: PaperAdapter) -> None:
     for i in range(3):
         paper.place_order(
@@ -50,6 +52,7 @@ def test_pagination_and_executions(paper: PaperAdapter) -> None:
     assert len(execs["items"]) == 3
 
 
+@pytest.mark.d1a
 def test_injected_partial_and_protection(paper: PaperAdapter) -> None:
     paper.inject_partial_qty = d("0.4")
     order = paper.place_order(

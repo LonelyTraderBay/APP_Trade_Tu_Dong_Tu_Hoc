@@ -81,9 +81,14 @@ class TelegramTestResult:
 
 @dataclass(frozen=True, slots=True)
 class BackupResult:
+    """`kept` is how many backups now exist in the backup directory after
+    retention rotation ran (`persistence.backup.rotate_backups`, ADR-D03's
+    default of 7). `None` on failure."""
+
     ok: bool
     path: Path | None = None
     error: str | None = None
+    kept: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,8 +238,17 @@ class SettingsController:
         self, *, db_path: Path | None = None, backup_dir: Path | None = None
     ) -> BackupResult:
         """Wraps `persistence.backup.snapshot_database`. Defaults to the real
-        runtime DB path — tests must always pass `db_path` explicitly."""
-        from autotrade.persistence.backup import snapshot_database
+        runtime DB path — tests must always pass `db_path` explicitly.
+
+        `snapshot_database` already rotates old backups down to
+        `DEFAULT_BACKUP_RETENTION` (ADR-D03) internally; `kept` on the
+        result just reports how many remain afterwards so the view can
+        show it. A failure to *count* the remaining backups (e.g. the
+        directory disappearing between the snapshot and the count) is not
+        treated as a backup failure — the snapshot already succeeded — so
+        `kept` simply stays `None` in that case.
+        """
+        from autotrade.persistence.backup import list_backups, snapshot_database
         from autotrade.persistence.engine import default_db_path
 
         src = db_path or default_db_path()
@@ -242,7 +256,13 @@ class SettingsController:
             result_path = snapshot_database(src, backup_dir)
         except Exception as exc:  # noqa: BLE001 - contract: never raise into Qt
             return BackupResult(ok=False, error=str(exc))
-        return BackupResult(ok=True, path=result_path)
+
+        kept: int | None
+        try:
+            kept = len(list_backups(result_path.parent))
+        except OSError:
+            kept = None
+        return BackupResult(ok=True, path=result_path, kept=kept)
 
     def default_backups_dir(self) -> Path:
         """The directory `run_backup`/`run_restore` use by default (same

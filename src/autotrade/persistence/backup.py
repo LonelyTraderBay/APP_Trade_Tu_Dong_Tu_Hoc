@@ -28,6 +28,7 @@ simply rejected.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,13 +36,119 @@ from pathlib import Path
 
 _PERSISTENCE_DIR = Path(__file__).resolve().parent
 
+# ADR-D03 (`Kien-truc-App-Desktop-Solo-v1.4.md` line ~187): "... giữ mặc
+# định 7 bản" ("... keep 7 by default"), Owner-accepted as a fixed default
+# at D0-08 (same doc, ~line 913: "Backup 7 bản / log 30 ngày ... Chấp nhận
+# mặc định"). This is the exact, Owner-signed-off number — not a rough
+# guess.
+DEFAULT_BACKUP_RETENTION = 7
 
-def snapshot_database(src: Path, backup_dir: Path | None = None) -> Path:
+# Matches exactly the filenames `snapshot_database` itself writes
+# (`autotrade-<YYYYmmddTHHMMSSZ>.sqlite3`). Deliberately narrow — never a
+# broad glob — so rotation can never delete a file this system didn't
+# create as a backup (e.g. a `.tmp` file mid-write, or an unrelated file a
+# user dropped into the same directory).
+_BACKUP_FILENAME_RE = re.compile(r"^autotrade-(\d{8}T\d{6}Z)\.sqlite3$")
+
+
+def _scan_backups(backup_dir: Path) -> list[tuple[datetime, Path]]:
+    """Every file in `backup_dir` matching the exact backup naming pattern,
+    paired with the timestamp parsed out of its filename. Shared by
+    `rotate_backups` and `list_backups` so both agree on what counts as a
+    backup and how "newest" is determined."""
+    if not backup_dir.exists():
+        return []
+
+    candidates: list[tuple[datetime, Path]] = []
+    for path in backup_dir.iterdir():
+        if not path.is_file():
+            continue
+        match = _BACKUP_FILENAME_RE.match(path.name)
+        if not match:
+            continue
+        try:
+            stamp = datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        candidates.append((stamp, path))
+    return candidates
+
+
+def list_backups(backup_dir: Path) -> list[Path]:
+    """Every valid backup file in `backup_dir`, newest first.
+
+    Uses the same matching/ordering rules as `rotate_backups` (exact
+    filename pattern, timestamp parsed from the filename). Handy for the UI
+    to report how many backups currently exist without duplicating that
+    logic."""
+    candidates = _scan_backups(backup_dir)
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in candidates]
+
+
+def rotate_backups(backup_dir: Path, *, keep: int = DEFAULT_BACKUP_RETENTION) -> list[Path]:
+    """Delete all but the newest `keep` backups in `backup_dir`.
+
+    Only files matching the exact naming pattern `snapshot_database` writes
+    are considered — anything else (a `.tmp` file mid-write, an unrelated
+    file) is left untouched. Recency is determined by the timestamp
+    *embedded in the filename* (parsed with the same
+    `%Y%m%dT%H%M%SZ` format `snapshot_database` writes), not filesystem
+    mtime, which can be unreliable (e.g. after a copy/restore preserves or
+    resets it differently across machines).
+
+    Never raises: a rotation failure on one file (permission error, file
+    disappearing concurrently, etc.) is skipped so it never blocks the
+    backup that was just successfully taken. Returns the list of paths
+    that were actually deleted, for logging/testing.
+    """
+    candidates = _scan_backups(backup_dir)
+
+    if len(candidates) <= keep:
+        return []
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    stale = candidates[keep:]
+
+    deleted: list[Path] = []
+    for _stamp, path in stale:
+        try:
+            path.unlink()
+        except OSError:
+            # Never let one file's delete failure (permissions, concurrent
+            # removal, ...) block cleanup of the rest, and never propagate
+            # into the caller — a rotation failure must not undo the fact
+            # that a good backup was just taken.
+            continue
+        deleted.append(path)
+    return deleted
+
+
+def snapshot_database(
+    src: Path,
+    backup_dir: Path | None = None,
+    *,
+    now: datetime | None = None,
+    keep: int = DEFAULT_BACKUP_RETENTION,
+) -> Path:
+    """Snapshot `src` into `backup_dir` (default: `<src's dir>/backups`).
+
+    `now` is injectable to keep tests deterministic (same pattern as
+    `app_ui.services.dashboard.build_dashboard_view`'s `now` parameter) —
+    real callers never pass it, so wall-clock `datetime.now(UTC)` is used.
+
+    After a successful snapshot, `rotate_backups` runs against `dest_dir`
+    with `keep` (default `DEFAULT_BACKUP_RETENTION`) so every caller gets
+    retention rotation for free — including `restore_database`'s internal
+    pre-overwrite safety snapshot, which lands in the same `backups/`
+    directory by default and is subject to the same cap (see
+    `restore_database`'s docstring for why that's the right call).
+    """
     if not src.exists():
         raise FileNotFoundError(src)
     dest_dir = backup_dir or (src.parent / "backups")
     dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     tmp = dest_dir / f"autotrade-{stamp}.sqlite3.tmp"
     final = dest_dir / f"autotrade-{stamp}.sqlite3"
 
@@ -65,6 +172,7 @@ def snapshot_database(src: Path, backup_dir: Path | None = None) -> Path:
         raise RuntimeError(f"integrity_check failed: {row}")
 
     tmp.replace(final)
+    rotate_backups(dest_dir, keep=keep)
     return final
 
 
@@ -154,7 +262,18 @@ def restore_database(
       4. If `target_path` already exists, a safety snapshot of it is taken
          (`snapshot_database`, into `safety_backup_dir`) — so a bad restore
          is itself recoverable. Skipped (not a failure) when `target_path`
-         doesn't exist yet (fresh install).
+         doesn't exist yet (fresh install). This safety snapshot goes
+         through the exact same `snapshot_database` call as a manual
+         "Backup now", so it is subject to the same
+         `DEFAULT_BACKUP_RETENTION`-file rotation — deliberately, not as an
+         oversight: `safety_backup_dir` defaults to the very same
+         `backups/` directory a manual backup uses (see
+         `SettingsController.default_backups_dir`), a safety-snapshot-
+         before-restore is still "a backup" per ADR-D03's "giữ mặc định 7
+         bản", and exempting it would let repeated restores silently grow
+         the directory without bound even though every individual file
+         still looks like a normal, valid backup.
+
       5. Committing `tmp` prefers an atomic `Path.replace` (identical to
          `snapshot_database`); if that raises `PermissionError` — which it
          will on Windows whenever `target_path` is held open by another

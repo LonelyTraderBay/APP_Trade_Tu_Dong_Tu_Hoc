@@ -293,6 +293,13 @@ class CcxtDemoAdapter:
         return self._normalize_order(raw, client_order_id=client_order_id)
 
     def cancel_order(self, *, broker_order_id: str) -> dict[str, Any]:
+        assert_allowlisted(
+            exchange_id=D1B_ALLOWLIST.exchange_id,
+            market=D1B_ALLOWLIST.market,
+            endpoint_class=self._endpoint_class or assert_demo_sandbox(self.endpoint),
+            symbol=D1B_ALLOWLIST.symbol,
+            mode="DEMO",
+        )
         raw = self.exchange.cancel_order(broker_order_id, D1B_ALLOWLIST.symbol)
         return self._normalize_order(raw)
 
@@ -313,11 +320,13 @@ class CcxtDemoAdapter:
 
     def list_open_orders(self, *, page: int = 1, page_size: int = 50) -> dict[str, Any]:
         opens = self.exchange.fetch_open_orders(D1B_ALLOWLIST.symbol)
-        items = [self._normalize_order(o) for o in opens[:page_size]]
+        offset = (page - 1) * page_size
+        window = opens[offset : offset + page_size]
+        items = [self._normalize_order(o) for o in window]
         return {
             "items": items,
-            "has_more": len(opens) > page_size,
-            "done": len(opens) <= page_size,
+            "has_more": offset + page_size < len(opens),
+            "done": offset + page_size >= len(opens),
             "page": page,
             "page_size": page_size,
         }

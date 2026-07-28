@@ -3,6 +3,9 @@
 Also covers the FR-009 gap fix: `enable-demo` capturing a real
 `cert.capture_baseline` (previously `snapshot_versions` was never called in
 production) and the new `cert-check-drift` CLI command.
+
+Also covers the Post-D1a T076 follow-up (2026-07-28): the `run-trading-loop`
+CLI wrapper around `core/oms/trading_loop.py::run_trading_loop_iteration`.
 """
 
 from __future__ import annotations
@@ -13,6 +16,40 @@ import pytest
 
 from autotrade.entrypoints import headless
 from autotrade.entrypoints.headless import EXIT_ALREADY_RUNNING, EXIT_DRIFT_DETECTED, main
+from autotrade.persistence.models import Account, ReconBreak
+from autotrade.persistence.uow import UnitOfWork
+
+PAPER_ACCOUNT_ID = "paper1"
+DEMO_ACCOUNT_ID = "demo-binance"
+
+
+def _seed_paper_active(uow: UnitOfWork) -> None:
+    with uow.session() as session:
+        session.add(
+            Account(
+                account_id=PAPER_ACCOUNT_ID,
+                adapter_id="paper",
+                mode="PAPER",
+                status="READY",
+                eligibility="PAPER",
+                is_active=True,
+            )
+        )
+
+
+def _seed_demo_active(uow: UnitOfWork) -> None:
+    with uow.session() as session:
+        session.add(
+            Account(
+                account_id=DEMO_ACCOUNT_ID,
+                adapter_id="ccxt",
+                mode="DEMO",
+                endpoint="binance_spot_testnet",
+                status="READY",
+                eligibility="DEMO_CERTIFIED",
+                is_active=True,
+            )
+        )
 
 
 @pytest.mark.d1c
@@ -288,3 +325,217 @@ def test_cert_check_drift_detects_change_and_invalidates(
         assert row.valid is False
         assert row.invalidated_reason is not None
         assert "ccxt_version_changed" in row.invalidated_reason
+
+
+# --- run-trading-loop (Post-D1a T076 follow-up) -----------------------------
+
+
+@pytest.mark.d1c
+def test_run_trading_loop_refuses_without_active_account(
+    migrated_uow: UnitOfWork,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from autotrade.app_ui.services import single_instance
+
+    monkeypatch.setattr(single_instance.SingleInstanceGuard, "acquire", lambda self: True)
+
+    exit_code = main(["run-trading-loop"])
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "no active account" in captured.err
+    assert "starting PAPER trading loop" not in captured.out
+
+
+@pytest.mark.d1c
+def test_run_trading_loop_refuses_when_active_account_is_not_paper(
+    migrated_uow: UnitOfWork,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from autotrade.app_ui.services import single_instance
+
+    monkeypatch.setattr(single_instance.SingleInstanceGuard, "acquire", lambda self: True)
+    _seed_demo_active(migrated_uow)
+
+    exit_code = main(["run-trading-loop"])
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "PAPER-only" in captured.err
+    assert "DEMO" in captured.err
+    assert "starting PAPER trading loop" not in captured.out
+
+
+@pytest.mark.d1c
+def test_run_trading_loop_refuses_when_startup_recovery_locks(
+    migrated_uow: UnitOfWork,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A locked account (here: an unresolved recon break, same precondition
+    `run_desktop_startup_recovery` already enforces for the desktop UI — see
+    `tests/unit/test_startup_service.py::test_open_recon_breaks_lock_with_unresolved_breaks_reason`)
+    must refuse before the loop ever starts — no adapters/rule constructed,
+    no iteration attempted, no submit possible."""
+    from autotrade.app_ui.services import single_instance
+
+    monkeypatch.setattr(single_instance.SingleInstanceGuard, "acquire", lambda self: True)
+    _seed_paper_active(migrated_uow)
+    with migrated_uow.session() as session:
+        session.add(
+            ReconBreak(
+                type="orphan",
+                payload={"account_id": PAPER_ACCOUNT_ID},
+                status="OPEN",
+                at=datetime.now(UTC),
+            )
+        )
+
+    exit_code = main(["run-trading-loop"])
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "startup recovery locked" in captured.err
+    assert "unresolved_breaks" in captured.err
+    assert "starting PAPER trading loop" not in captured.out
+
+
+@pytest.mark.d1c
+def test_run_trading_loop_keyboard_interrupt_exits_cleanly(
+    migrated_uow: UnitOfWork,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ctrl+C during the inter-poll sleep is a deliberate Owner stop, not a
+    failure — must exit 0, not propagate."""
+    from autotrade.app_ui.services import single_instance
+
+    monkeypatch.setattr(single_instance.SingleInstanceGuard, "acquire", lambda self: True)
+    _seed_paper_active(migrated_uow)
+
+    def _raise_on_sleep(seconds: float) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(headless.time, "sleep", _raise_on_sleep)
+
+    # No --iterations -> would otherwise run forever; the very first
+    # inter-poll sleep raises KeyboardInterrupt instead.
+    exit_code = main(["run-trading-loop"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "stopped by Owner (Ctrl+C)" in out
+    assert "iter=0" in out
+
+
+@pytest.mark.d1c
+def test_run_trading_loop_holds_same_instances_and_evolves_state_across_iterations(
+    migrated_uow: UnitOfWork,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The single most important invariant from `trading_loop.py`'s own
+    contract: `rule`/`market_adapter`/`exec_adapter` must be the SAME
+    instances across every poll, never reconstructed. Proven two ways:
+
+    1. Directly — a spy wrapped around the real `run_trading_loop_iteration`
+       records `id(market_adapter)`/`id(exec_adapter)`/`id(rule)` on every
+       call; all 7 calls must reference the same three objects.
+    2. Behaviorally — reuses the exact SC-006 reference series/params from
+       `tests/integration/test_trading_loop.py` (n_fast=2, n_slow=4,
+       atr_period=2, cooldown=3): a real `ENTER_LONG` cross at the 7th poll
+       is only reachable if `_prev_fast`/`_prev_slow` survived from the
+       previous polls — a freshly-constructed `RuleSmaCrossV1` every
+       iteration would leave `_prev_fast`/`_prev_slow` at `None` forever
+       (see `RuleSmaCrossV1.evaluate`'s `if self._prev_fast is not None`
+       guard) and no cross could ever fire.
+    """
+    import autotrade.core.oms.trading_loop as trading_loop_mod
+    from autotrade.app_ui.services import single_instance
+    from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter, FakeCcxtExchange
+    from autotrade.core.domain.allowlist import D1B_ALLOWLIST
+    from autotrade.core.strategy import rule_sma_cross_v1 as rule_mod
+
+    monkeypatch.setattr(single_instance.SingleInstanceGuard, "acquire", lambda self: True)
+    _seed_paper_active(migrated_uow)
+
+    # Same reference series/params as test_trading_loop.py's SC-006 case:
+    # ENTER_LONG fires at index 6 (the 7th poll).
+    closes = [10, 9, 8, 7, 6, 7, 8]
+    params = rule_mod.StrategyParams(n_fast=2, n_slow=4, atr_period=2, cooldown=3)
+    start_ms = 1_700_000_000_000
+
+    def _row(i: int, close: int) -> list[object]:
+        ts = start_ms + i * 900_000
+        return [ts, close, close + 1, close - 1, close, 10]
+
+    fake = FakeCcxtExchange()
+    fake.ohlcv.append(_row(0, closes[0]))
+    market_adapter = CcxtDemoAdapter(exchange=fake, endpoint=D1B_ALLOWLIST.endpoint_class)
+    monkeypatch.setattr(headless, "_build_loop_market_adapter", lambda: market_adapter)
+
+    # Real RuleSmaCrossV1, just constructed with the small reference-series
+    # params instead of production defaults (n_slow=30 would need 30 polls
+    # to say anything meaningful in a unit test) — captured via a spy
+    # constructor so the test can inspect the SAME instance afterwards.
+    created_rules: list[object] = []
+    real_rule_cls = rule_mod.RuleSmaCrossV1
+
+    def _small_rule_factory(*_a: object, **_kw: object) -> object:
+        rule = real_rule_cls(params)
+        created_rules.append(rule)
+        return rule
+
+    monkeypatch.setattr(rule_mod, "RuleSmaCrossV1", _small_rule_factory)
+
+    # Feed one new closed candle per inter-poll sleep, so each of the 7
+    # iterations sees exactly one genuinely new candle (matching the
+    # SC-006 hand-derivation's per-poll cadence).
+    remaining = iter(closes[1:])
+
+    def _sleep_and_feed(seconds: float) -> None:
+        nxt = next(remaining, None)
+        if nxt is not None:
+            fake.ohlcv.append(_row(len(fake.ohlcv), nxt))
+
+    monkeypatch.setattr(headless.time, "sleep", _sleep_and_feed)
+
+    real_run_iteration = trading_loop_mod.run_trading_loop_iteration
+    calls: list[tuple[int, int, int]] = []
+
+    def _spy_run_iteration(uow, mkt, exe, rule, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        calls.append((id(mkt), id(exe), id(rule)))
+        return real_run_iteration(uow, mkt, exe, rule, **kwargs)
+
+    monkeypatch.setattr(trading_loop_mod, "run_trading_loop_iteration", _spy_run_iteration)
+
+    exit_code = main(["run-trading-loop", "--iterations", "7"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    for i in range(7):
+        assert f"iter={i}" in out
+    assert "signal=ENTER_LONG" in out
+    assert "submit_ok=True" in out
+    assert "completed 7 iteration(s)" in out
+
+    # (1) Direct proof: every call referenced the exact same three objects.
+    assert len(calls) == 7
+    assert len({c[0] for c in calls}) == 1  # market_adapter identity
+    assert len({c[1] for c in calls}) == 1  # exec_adapter identity
+    assert len({c[2] for c in calls}) == 1  # rule identity
+    assert calls[0][0] == id(market_adapter)
+
+    # `rule` was constructed exactly once, not once per iteration.
+    assert len(created_rules) == 1
+    rule = created_rules[0]
+
+    # (2) Behavioral proof: the real ENTER_LONG cross actually fired, and
+    # the rule's in-memory state reflects it — impossible without the
+    # SAME instance carrying `_prev_fast`/`_prev_slow`/`_cooldown_left`
+    # across every one of the 7 calls above.
+    assert rule._in_position is True
+    assert rule._prev_fast is not None
+    assert rule._prev_slow is not None

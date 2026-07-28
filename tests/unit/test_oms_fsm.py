@@ -7,6 +7,7 @@ import pytest
 from autotrade.core.oms.fsm import IntentState, can_transition, transition
 
 
+@pytest.mark.d1a
 def test_legal_and_illegal_transitions() -> None:
     assert can_transition(IntentState.CREATED, IntentState.RESERVED)
     assert transition(IntentState.RESERVED, IntentState.SUBMITTING) == IntentState.SUBMITTING

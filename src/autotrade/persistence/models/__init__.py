@@ -177,6 +177,11 @@ class Order(Base):
     broker_order_id: Mapped[str | None] = mapped_column(String(128))
     delivery_certainty: Mapped[str] = mapped_column(String(32), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: G1.4 — full (redacted) adapter order-response dict; for `CcxtDemoAdapter`
+    #: this nests the underlying real ccxt payload under `"raw"`; for
+    #: `PaperAdapter` the dict itself already IS the raw/authoritative
+    #: representation. Nullable/additive (0004); NULL for pre-migration rows.
+    raw_reference: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class OrderProtection(Base):

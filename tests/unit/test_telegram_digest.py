@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from autotrade.core.notify.digest import DigestInput, build_digest
 
 
+@pytest.mark.d1a
 def test_digest_payload_fields() -> None:
     out = build_digest(
         DigestInput(

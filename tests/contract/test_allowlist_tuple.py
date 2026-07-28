@@ -53,6 +53,16 @@ def test_place_wrong_symbol_refused() -> None:
 
 
 @pytest.mark.d1b
+def test_cancel_order_refused_when_not_allowlisted() -> None:
+    """cancel_order must gate on the allowlist like every other adapter call
+    that touches the exchange (connect/place_order/fetch_ohlcv_closed/
+    upsert_protection) — not just the ones that happen to accept a symbol."""
+    adapter = CcxtDemoAdapter(exchange=FakeCcxtExchange(), endpoint="https://api.binance.com")
+    with pytest.raises(AllowlistViolation):
+        adapter.cancel_order(broker_order_id="whatever")
+
+
+@pytest.mark.d1b
 def test_live_mode_refused_on_allowlist() -> None:
     from autotrade.core.domain.allowlist import assert_allowlisted
 

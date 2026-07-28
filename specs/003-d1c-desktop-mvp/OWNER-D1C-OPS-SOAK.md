@@ -47,6 +47,23 @@ start the soak window against a build older than that.
 
 ## Sleep / resume (at least 3 separate occasions across the window)
 
+**Known gap, deliberately deferred — read before running this section.**
+`detect_clock_jump()` (`core/domain/clock.py`) only catches a clock jump
+**across a restart** (backward wall-clock vs. the last persisted
+checkpoint). It does **not** run periodically while the app stays open
+across a sleep/resume in the same process — that needs a `QTimer` plus a
+design for re-locking a *running* session without ever blocking Pause/
+Flatten (the no-PIN-ever invariant), which was scoped out as bigger than
+the rest of the post-audit fixes (2026-07-27 decision, see PR #14). This
+checklist section is the intentional substitute in the meantime: a human
+checks the exact scenario the timer would have caught. If any of the
+checks below actually fail during this soak — banner goes stale, KS/Live
+Monitor shows something wrong post-resume, anything that traces back to
+the clock jumping while the app was already running — **that is the
+signal to build the periodic timer**, not before. File it as a new gap
+with the concrete repro from this soak, don't preemptively build it on
+spec.
+
 - [ ] Put the machine to sleep with the app open; resume; app is still
       responsive (not frozen) and the mode/account banner still reflects
       reality — this is the "Startup Recovery subset" contract
@@ -68,11 +85,32 @@ start the soak window against a build older than that.
 ## Backup / restore (at least once, not just at window start)
 
 - [ ] Settings → Backup now produces a new file under
-      `%LOCALAPPDATA%\AutoTradeAI\backups\` and the shown path exists.
+      `%LOCALAPPDATA%\AutoTradeAI\backups\` and the shown path exists. The
+      result label also reports how many backups now exist (e.g. "(3
+      backup(s) kept)") — confirm that number never exceeds 7.
 - [ ] `PRAGMA integrity_check` on that backup file returns `ok` (the backup
       helper already asserts this internally — spot-check manually once with
       `sqlite3 <backup file> "PRAGMA integrity_check;"` for the runbook
       record).
+- [ ] After more than 7 manual backups have accumulated across the soak
+      window (naturally, or by clicking "Backup now" a few extra times),
+      confirm `backups\` never holds more than 7 `autotrade-*.sqlite3`
+      files — `persistence.backup.rotate_backups` (ADR-D03's default of 7)
+      deletes the oldest automatically on every new backup, including the
+      safety snapshot a Restore takes before overwriting the live DB.
+
+**Known gap, deliberately deferred — same treatment as the clock-skew
+timer above.** ADR-D03 says "Backup lịch" (scheduled backup), which reads
+as a periodic, automatic trigger — a `QTimer`/background-thread/"N days
+since last backup" mechanism. That is **not** built. What exists today is
+retention *rotation* only: every time a backup is taken through the
+existing manual "Backup now" button (or a Restore's internal safety
+snapshot), old backups beyond the newest 7 are pruned. Nothing in the app
+takes a backup on its own on a schedule. If the ≥14-day soak surfaces a
+real need for unattended periodic backups (e.g. the Owner routinely goes
+several days without opening Settings), file that as a new gap with the
+concrete scenario — don't build the timer preemptively on spec (2026-07-28
+decision).
 
 ## Autostart (T053, once)
 

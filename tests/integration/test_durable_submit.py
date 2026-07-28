@@ -11,6 +11,7 @@ from autotrade.persistence.models import (
     AuditEvent,
     BalanceSnapshot,
     ExecutionCursor,
+    Order,
     OrderIntent,
     RiskReservation,
     Signal,
@@ -46,3 +47,9 @@ def test_durable_submit_paper_fill(ready_paper) -> None:  # noqa: ANN001
         reservation = session.get(RiskReservation, intent.reservation_id)
         assert reservation is not None
         assert reservation.state == "CONSUMED"
+        order_row = session.query(Order).filter(Order.intent_id == result.intent_id).one()
+        # G1.4 — full adapter order-response dict persisted (redacted), not
+        # just the narrow fields OMS reads off it.
+        assert order_row.raw_reference
+        assert order_row.raw_reference["broker_order_id"] == order_row.broker_order_id
+        assert order_row.raw_reference["state"] == "FILLED"

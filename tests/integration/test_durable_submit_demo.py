@@ -12,6 +12,7 @@ from autotrade.core.domain.money import d
 from autotrade.core.oms.account_state import AccountGate
 from autotrade.core.oms.submit import DurableSubmitter, SubmitRequest
 from autotrade.core.risk.engine import RiskEngine
+from autotrade.persistence.models import Order
 
 
 @pytest.mark.d1b
@@ -35,6 +36,15 @@ def test_durable_submit_demo_before_send(migrated_uow) -> None:  # noqa: ANN001
     )
     assert result.ok
     assert result.adapter_called
+    with migrated_uow.session() as session:
+        order_row = session.query(Order).filter(Order.intent_id == result.intent_id).one()
+        # G1.4 — CcxtDemoAdapter's normalized order dict nests the full
+        # underlying ccxt payload under "raw"; confirm both the normalized
+        # fields AND the nested real broker payload survive persistence.
+        assert order_row.raw_reference
+        assert order_row.raw_reference["broker_order_id"] == order_row.broker_order_id
+        assert order_row.raw_reference["raw"]["id"] == order_row.broker_order_id
+        assert order_row.raw_reference["raw"]["symbol"] == D1B_ALLOWLIST.symbol
 
 
 @pytest.mark.d1b

@@ -397,6 +397,13 @@ class DurableSubmitter:
         order_row.state = IntentState.FILLED.value
         order_row.broker_order_id = order["broker_order_id"]
         order_row.delivery_certainty = DeliveryCertainty.CONFIRMED.value
+        # G1.4 — persist the full adapter order-response dict (redacted), not
+        # just the fields OMS reads. Adapter-agnostic: for CcxtDemoAdapter
+        # `order` nests the real ccxt payload under "raw"; for PaperAdapter
+        # `order` itself is already the authoritative representation. No
+        # adapter-specific branching here — that would violate the OMS/
+        # adapter boundary.
+        order_row.raw_reference = redact_mapping(order)
 
         # Paper place_order already created execution id in list — synthesize stable id.
         exec_id = f"local-{client_order_id}"

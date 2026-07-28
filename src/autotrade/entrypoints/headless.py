@@ -2,6 +2,12 @@
 
 No localhost HTTP listener — in-process composition only (ADR-D13).
 
+``run-trading-loop`` (Post-D1a T076 follow-up, 2026-07-28): polls
+``core/oms/trading_loop.py::run_trading_loop_iteration`` every 60s, forever,
+until the Owner stops it with Ctrl+C. PAPER execution only — see
+``_run_trading_loop``'s docstring for the full precondition/adapter-wiring
+rationale.
+
 Single-instance (T015, Owner decision): headless shares the exact same
 ``AutoTradeAI.Solo`` lock as the desktop entrypoint
 (``autotrade.app_ui.services.single_instance.SingleInstanceGuard``) — one
@@ -37,10 +43,16 @@ import argparse
 import asyncio
 import getpass
 import sys
+import time
 from typing import Any
 
 EXIT_ALREADY_RUNNING = 3
 EXIT_DRIFT_DETECTED = 4
+
+#: `run-trading-loop` poll cadence — Owner-locked at 60s (task brief,
+#: 2026-07-28). Not configurable via CLI flag: the Owner decision was a
+#: fixed cadence, not a tunable.
+POLL_SECONDS = 60.0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,6 +116,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Cancel an ACKNOWLEDGED order intent (PAPER or DEMO, by account mode)",
     )
     p_cancel.add_argument("--intent-id", required=True)
+
+    p_loop = sub.add_parser(
+        "run-trading-loop",
+        help="Poll every 60s and run the PAPER trading loop until Ctrl+C "
+        "(requires an active PAPER account; refuses DEMO/other modes)",
+    )
+    p_loop.add_argument(
+        "--iterations",
+        type=int,
+        default=None,
+        help="Stop after N iterations instead of running forever (manual "
+        "smoke-testing aid; default: run until Ctrl+C)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -184,10 +209,13 @@ def main(argv: list[str] | None = None) -> int:
             return _soak_abort(account_id=args.account_id, soak_id=args.soak_id)
         if args.cmd == "cancel-intent":
             return _cancel_intent(args.intent_id)
+        if args.cmd == "run-trading-loop":
+            return _run_trading_loop(iterations=args.iterations)
 
         print(
             "autotrade-headless: ready (no HTTP). "
-            "Use demo-* / cert-* / run-lifecycles / run-soak / switch-account / status.",
+            "Use demo-* / cert-* / run-lifecycles / run-soak / run-trading-loop / "
+            "switch-account / status.",
             file=sys.stderr,
         )
         return 0
@@ -663,6 +691,183 @@ def _cancel_intent(intent_id: str) -> int:
         )
         return 2
     print(f"cancel-intent ok intent_id={intent_id} state={result.state}")
+    return 0
+
+
+def _build_loop_market_adapter():  # noqa: ANN201 - CcxtDemoAdapter, imported lazily below
+    """Read-only OHLCV source for `run-trading-loop`.
+
+    Same `AUTOTRADE_D1B_REAL` branch as `_demo_test_connection` above and as
+    `app_ui/controllers/broker_hub.py::_build_adapter`,
+    `app_ui/controllers/kill_switch.py::_build_adapter`, and
+    `app_ui/services/startup.py::_build_adapter` (real ccxt behind
+    `AUTOTRADE_D1B_REAL=1` with stored DEMO testnet keyring creds, else
+    `FakeCcxtExchange` producing synthetic data) — deliberately a fourth
+    near-identical private copy of this branch rather than a shared helper,
+    matching this codebase's existing precedent (see `startup.py`'s module
+    docstring) for why each call site keeps its own; `headless.py` itself
+    already repeats the same branch inline in `_demo_test_connection` and
+    `_cancel_intent` above.
+
+    This adapter is NEVER used to place orders here — `run_trading_loop_iteration`
+    only calls `fetch_ohlcv_closed()` on it (see `MarketDataAdapter` protocol
+    in `core/oms/trading_loop.py`); all execution goes through a separately
+    constructed `PaperAdapter`.
+    """
+    import os
+
+    from autotrade.core.adapters.ccxt_demo.adapter import CcxtDemoAdapter, FakeCcxtExchange
+
+    if os.environ.get("AUTOTRADE_D1B_REAL") == "1":
+        key, secret = _load_demo_creds()
+        return CcxtDemoAdapter(api_key=key, api_secret=secret, endpoint="binance_spot_testnet")
+    return CcxtDemoAdapter(exchange=FakeCcxtExchange(), endpoint="binance_spot_testnet")
+
+
+def _iteration_summary(i: int, result: Any) -> str:
+    """One-line per-poll summary — the Owner watching this terminal needs to
+    see activity, not silence."""
+    parts = [f"iter={i}", f"new_candles={result.new_candles_ingested}"]
+    if result.signal is not None:
+        parts.append(f"signal={result.signal}")
+    if result.submit_result is not None:
+        parts.append(f"submit_ok={result.submit_result.ok}")
+        if not result.submit_result.ok and result.submit_result.error:
+            parts.append(f"submit_error={result.submit_result.error}")
+    if result.error is not None:
+        parts.append(f"error={result.error}")
+    return "run-trading-loop: " + " ".join(parts)
+
+
+def _run_trading_loop(*, iterations: int | None = None) -> int:
+    """`run-trading-loop`: poll `run_trading_loop_iteration` every
+    `POLL_SECONDS` (60s), forever, until the Owner stops it with Ctrl+C.
+
+    PAPER execution only — `run_trading_loop_iteration`'s `exec_adapter` is
+    typed as the concrete `PaperAdapter` (see that module's docstring: a
+    deliberate type-level guard, not a runtime check), and this command
+    additionally refuses up front if the currently active account is not
+    itself in PAPER mode. There is no DEMO/real-order path here or anywhere
+    reachable from this command.
+
+    Market data source (IMPORTANT — read before running unattended):
+    `CcxtDemoAdapter._build_real_exchange` always requires DEMO testnet
+    credentials to construct a real client — there is no credential-less
+    public-data-only path today (see task brief). So real market data here
+    requires the SAME precondition as DEMO trading: `AUTOTRADE_D1B_REAL=1`
+    env var AND stored DEMO testnet credentials (`demo-store-creds`). Without
+    both, this command runs against `FakeCcxtExchange` — SYNTHETIC, not real,
+    prices — so the strategy is exercised and PAPER fills are produced, but
+    they do NOT reflect the real market. The startup banner below always
+    states which one is active; do not assume "it's running" means "it's
+    trading against real prices."
+
+    Startup-recovery reuse (Owner decision, this task): reuses
+    `app_ui/services/startup.py::run_desktop_startup_recovery` directly
+    rather than duplicating its orchestration. `headless.py` already imports
+    from `app_ui.services` (see `SingleInstanceGuard`/`read_owner_pid` used
+    by `main()` above), so this is not the first time this module crosses
+    that boundary — there is no clean `core/`-only equivalent to reach for
+    instead, and `run_desktop_startup_recovery` is already Qt-free and
+    account-agnostic (it resolves the active account itself and returns
+    `None` gracefully when there is none). A genuinely autonomous poll loop
+    deserves this precondition check at least as much as the desktop UI
+    does, per the same reasoning as `run_desktop_startup_recovery`'s own
+    ADR-D12/T070 fix — a locked account must not be allowed to trade on its
+    own.
+
+    `rule`, `market_adapter`, and `exec_adapter` are constructed exactly
+    ONCE below and held across every iteration of the `while` loop —
+    `run_trading_loop_iteration` requires this (see its module docstring: a
+    fresh `RuleSmaCrossV1` every call loses crossover memory and can never
+    detect a cross). `seed_strategy_state` is called exactly once, before
+    the first iteration.
+
+    `iterations`: test/smoke-testing injection point — `None` (the CLI
+    default) runs forever until Ctrl+C; a positive integer stops after that
+    many polls without requiring a real 60s wait between each (still calls
+    `time.sleep(POLL_SECONDS)` between iterations, so tests must monkeypatch
+    `headless.time.sleep`).
+
+    Never lets an `IterationResult.error` stop the loop — a transient
+    network hiccup must not require the Owner to manually restart the
+    process. `run_trading_loop_iteration` itself never raises; the only
+    exception this function handles specially is `KeyboardInterrupt`
+    (Owner-initiated Ctrl+C), which exits cleanly with code 0 — a deliberate
+    stop is not a failure.
+    """
+    import os
+
+    from autotrade.app_ui.services.startup import run_desktop_startup_recovery
+    from autotrade.core.accounts.active import get_active_account
+    from autotrade.core.adapters.paper import PaperAdapter
+    from autotrade.core.oms.trading_loop import run_trading_loop_iteration, seed_strategy_state
+    from autotrade.core.strategy.rule_sma_cross_v1 import RuleSmaCrossV1
+
+    uow = _uow()
+    with uow.session() as session:
+        account = get_active_account(session)
+        if account is None:
+            print(
+                "run-trading-loop refused: no active account — "
+                "run 'switch-account paper' first",
+                file=sys.stderr,
+            )
+            return 2
+        if account.mode != "PAPER":
+            print(
+                f"run-trading-loop refused: active account mode={account.mode} — "
+                "this command is PAPER-only (switch to paper with 'switch-account paper')",
+                file=sys.stderr,
+            )
+            return 2
+        account_id = account.account_id
+
+    recovery = run_desktop_startup_recovery(uow)
+    if recovery is None or not recovery.ready:
+        reasons = ",".join(recovery.reasons) if recovery is not None else "no_active_account"
+        print(
+            f"run-trading-loop refused: startup recovery locked ({reasons}) — "
+            "resolve the underlying issue and retry",
+            file=sys.stderr,
+        )
+        return 2
+
+    is_real = os.environ.get("AUTOTRADE_D1B_REAL") == "1"
+    market_adapter = _build_loop_market_adapter()
+    exec_adapter = PaperAdapter()
+    rule = RuleSmaCrossV1()
+    with uow.session() as session:
+        seed_strategy_state(session, rule, account_id=account_id)
+
+    market_data_desc = (
+        "REAL (ccxt Binance Spot Testnet, AUTOTRADE_D1B_REAL=1)"
+        if is_real
+        else "FAKE/SYNTHETIC (FakeCcxtExchange) — NOT real market prices"
+    )
+    print("run-trading-loop: starting PAPER trading loop")
+    print(f"  account_id    = {account_id}")
+    print(f"  market data   = {market_data_desc}")
+    print("  execution     = PaperAdapter (simulated fills; no real orders ever placed)")
+    print(f"  poll interval = {POLL_SECONDS:.0f}s")
+    print("  stop          = Ctrl+C")
+
+    i = 0
+    try:
+        while iterations is None or i < iterations:
+            result = run_trading_loop_iteration(
+                uow, market_adapter, exec_adapter, rule, account_id=account_id
+            )
+            print(_iteration_summary(i, result))
+            i += 1
+            if iterations is not None and i >= iterations:
+                break
+            time.sleep(POLL_SECONDS)
+    except KeyboardInterrupt:
+        print("\nrun-trading-loop: stopped by Owner (Ctrl+C)")
+        return 0
+
+    print(f"run-trading-loop: completed {i} iteration(s) (--iterations={iterations})")
     return 0
 
 

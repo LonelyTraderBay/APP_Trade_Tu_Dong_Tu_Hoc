@@ -45,6 +45,7 @@ from typing import Any
 
 from autotrade.core.adapters.protocol import BrokerAdapter
 from autotrade.core.domain.ids import IdFactory
+from autotrade.core.domain.redaction import redact_mapping
 from autotrade.core.oms.fsm import DeliveryCertainty, IntentState, transition
 from autotrade.persistence.models import AuditEvent, Order, OrderIntent
 from autotrade.persistence.uow import UnitOfWork
@@ -151,6 +152,13 @@ def cancel_intent(
         delivery=delivery,
         audit_type="intent_cancel_resolved",
         audit_extra={"response": response},
+        # G1.4 — the terminal cancel_order() response is just as worth
+        # preserving as _finalize_fill's fill-time order dict (same
+        # adapter-agnostic dict shape: PaperAdapter's own order dict, or
+        # CcxtDemoAdapter's normalized dict nesting the real ccxt payload
+        # under "raw"). Only available here in the resolved branch — the
+        # exception branch above never received a response to persist.
+        raw_reference=response,
     )
 
     if final_state is IntentState.CANCEL_UNKNOWN:
@@ -205,6 +213,7 @@ def _persist_terminal(
     delivery: DeliveryCertainty,
     audit_type: str,
     audit_extra: dict[str, Any],
+    raw_reference: dict[str, Any] | None = None,
 ) -> None:
     with uow.session() as session:
         intent = session.get(OrderIntent, intent_id)
@@ -213,6 +222,8 @@ def _persist_terminal(
             intent.state = transition(IntentState.CANCEL_REQUESTED, new_state).value
             order_row.state = intent.state
             order_row.delivery_certainty = delivery.value
+        if raw_reference is not None:
+            order_row.raw_reference = redact_mapping(raw_reference)
         session.add(
             AuditEvent(
                 event_id=ids.uuid4(),

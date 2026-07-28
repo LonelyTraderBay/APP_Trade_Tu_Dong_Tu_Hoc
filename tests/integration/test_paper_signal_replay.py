@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from autotrade.core.domain.money import d
 from autotrade.core.features.engine import FeatureEngine
 from autotrade.core.market.candles import Candle, CandleStore
@@ -11,6 +13,7 @@ from autotrade.core.market.instruments import PAPER_INTERNAL_1, paper_internal_1
 from autotrade.core.strategy.rule_sma_cross_v1 import RuleSmaCrossV1, StrategyParams
 
 
+@pytest.mark.d1a
 def test_paper_signal_replay_deterministic() -> None:
     instrument = paper_internal_1()
     assert instrument.internal_symbol == PAPER_INTERNAL_1

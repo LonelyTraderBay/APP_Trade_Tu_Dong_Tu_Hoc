@@ -287,6 +287,79 @@ fail-OPEN; regression tests in `tests/unit/test_dashboard_snapshot.py`):
       regardless — only the periodic same-process caller is missing. No
       other `app_ui/` change was made or needed.
 
+- [x] T075 **ADR-D03 gap**: `Kien-truc-App-Desktop-Solo-v1.4.md` line ~187
+      ("Backup lịch dùng SQLite backup API vào file tạm →
+      `integrity_check` → atomic rename; giữ mặc định 7 bản") was only
+      half-built — `persistence/backup.py::snapshot_database` took a new
+      timestamped backup every call but never deleted old ones, so the
+      `backups/` directory grew without bound. Confirmed "7" is the exact,
+      Owner-signed-off default (same doc ~line 913, D0-08: "Backup 7 bản /
+      log 30 ngày ... Chấp nhận mặc định" — not a rough guess). Fixed by
+      adding `persistence/backup.py::rotate_backups(backup_dir, *,
+      keep=DEFAULT_BACKUP_RETENTION)` (new module constant
+      `DEFAULT_BACKUP_RETENTION = 7`): lists files matching the exact
+      `autotrade-<timestamp>.sqlite3` naming pattern `snapshot_database`
+      writes (never a broad glob — a `.tmp` file mid-write or an unrelated
+      file in the same directory is never a candidate), sorts by the
+      timestamp *embedded in the filename* (not filesystem mtime, which is
+      unreliable across copies/restores), deletes all but the newest
+      `keep`, and never raises — a delete failure on one file is skipped so
+      it can't block cleanup of the rest or undo the fact that a good
+      backup was just taken. Wired into `snapshot_database` itself (runs
+      once at the end of every successful snapshot) rather than only from
+      `SettingsController.run_backup`, so every caller gets rotation for
+      free — including `restore_database`'s internal pre-overwrite safety
+      snapshot, which lands in the same `backups/` directory by default and
+      is, deliberately, subject to the same 7-file cap: a safety-snapshot-
+      before-restore is still "a backup" per ADR-D03's wording, and
+      exempting it would let repeated restores silently grow the directory
+      without bound even though each individual file still looks like a
+      normal, valid backup. `snapshot_database` also gained an injectable
+      `now: datetime | None = None` parameter (same pattern as
+      `app_ui/services/dashboard.py::build_dashboard_view`'s `now`) purely
+      to make rotation tests deterministic without sleeping between calls
+      or fighting the stamped filenames' 1-second resolution; real callers
+      never pass it. New `persistence/backup.py::list_backups` (small
+      helper sharing the same file-matching/ordering logic as
+      `rotate_backups`) backs a minimal Settings UI addition:
+      `SettingsController.run_backup`'s `BackupResult` gained a `kept: int
+      | None` field, and `SettingsPage`'s backup result label now appends
+      `(N backup(s) kept)` — no other UI change, the Backup section was not
+      redesigned.
+      **Explicit scoping decision (same visibility treatment as T074's
+      clock-skew-timer deferral):** the doc phrase "Backup lịch" implies a
+      SCHEDULED/automatic periodic backup trigger, which is a separate,
+      larger feature (needs a timer/scheduling mechanism, same kind of
+      surface as the deferred clock-skew periodic timer — see
+      `specs/003-d1c-desktop-mvp/OWNER-D1C-OPS-SOAK.md`'s "Sleep / resume"
+      section). This task is scoped to **retention rotation only**, applied
+      every time a backup is taken through the existing manual trigger
+      (Settings' "Backup now" button / a restore's safety snapshot). No
+      `QTimer`, no background thread, and no "N days since last backup"
+      auto-trigger were added — that remains a separate, deliberately
+      out-of-scope decision, not silently declined. Also checked whether
+      "Trước migration luôn tạo snapshot" (always snapshot before a
+      migration runs) is implemented anywhere: it is not —
+      `persistence/alembic/env.py::run_migrations_online`/
+      `run_migrations_offline` call `context.run_migrations()` directly,
+      no `snapshot_database` call anywhere in that file or its callers.
+      Left untouched deliberately: migrations run against a live DB path
+      resolved from environment state (`AUTOTRADE_DATA_DIR`/
+      `AUTOTRADE_DATABASE_URL`/`%LOCALAPPDATA%`), including in test/CI
+      contexts that intentionally point at throwaway `tmp_path` databases
+      with no `backups/` directory conventions of their own — adding a
+      snapshot call there needs its own review of failure/rollback
+      semantics (what happens if the pre-migration snapshot itself fails
+      mid-`alembic upgrade`?) rather than being folded into a UI-triggered-
+      backup fix. Filed here as a smaller, separate finding, not built.
+      Tests: extended `tests/unit/test_backup.py` (`rotate_backups` keeps
+      newest N / no-op under the cap / ignores non-backup files / survives
+      a per-file delete failure without raising; `snapshot_database`
+      end-to-end via 9 injected-`now` calls collapsing to 7 files).
+      `pytest -m "d1a or d1b"` (100 passed, 2 skipped) and `pytest -m d1c`
+      (222 passed, 2 skipped) both stayed green; `ruff check` clean on all
+      changed files.
+
 ---
 
 ## Phase 4: Ops soak D1c (≥14d) — after MVP UI

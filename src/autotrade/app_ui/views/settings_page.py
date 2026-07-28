@@ -331,7 +331,10 @@ class SettingsPage(QWidget):
     def _on_backup(self) -> None:
         result = self._controller.run_backup()
         if result.ok:
-            self.backup_result_label.setText(f"Backup written to {result.path}")
+            text = f"Backup written to {result.path}"
+            if result.kept is not None:
+                text += f" ({result.kept} backup(s) kept)"
+            self.backup_result_label.setText(text)
         else:
             self.backup_result_label.setText(f"Backup failed: {result.error}")
             QMessageBox.warning(self, "Backup failed", result.error or "Unknown error.")
